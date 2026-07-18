@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-07-18T22:40:18.735Z",
+  "integrationMethod": "read_only_federated_export",
+  "evidenceLanes": [
+    {
+      "id": "medical_or_official_background",
+      "canonicalDatabase": "docs/research/studies/R004-clinical-safety/B5-continuous-locator-cause-graph/menstrual-knowledge-r5.sqlite",
+      "databaseSha256": "fb74bffe59056139a1cede4fca6f60c9dd68fb3c44f65d88c0b99a9ee1dba529",
+      "releaseId": "2026-07-15-r5-working",
+      "releaseStatus": "working",
+      "counts": {
+        "active_sources": 109,
+        "active_claims": 236,
+        "claim_source_links": 354,
+        "pending_expert_reviews": 99,
+        "unlocated_links": 160,
+        "exported_claims": 64,
+        "exported_myths": 21
+      },
+      "boundary": "仅供黑客松教育原型展示；不是临床发布、诊断或处方。妇产科产品级终审仍待完成。"
+    },
+    {
+      "id": "public_experience_candidate",
+      "canonicalDatabase": "docs/research/studies/R006-public-practice-atlas/r006-public-practice.sqlite",
+      "databaseSha256": "51ea2967402072cdb1f9a912e73e17c347a3f374e50bf25a5cc4feb20d95346d",
+      "releaseId": "RUN-R006-MONID-XHS-20260719-01",
+      "releaseStatus": "candidate_pool",
+      "counts": {
+        "sources": 216,
+        "candidates": 216,
+        "evidence_links": 0,
+        "product_ready": 0
+      },
+      "boundary": "公开经验候选与医学事实分层；可见互动是讨论频率代理，不证明需求规模、因果或疗效",
+      "selectionScope": "固定查询与当时公开可见结果；不是全平台抽样，不可估计用户比例"
+    }
+  ],
+  "linkPolicy": "两条证据泳道不按关键词、URL或热度自动互证。只有 R006 evidence_links 中经过人工审阅的显式 external_claim_id 才建立关系。"
+}
