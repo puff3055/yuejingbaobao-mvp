@@ -128,7 +128,7 @@ export async function requestAgentReply({ message, history = [], analysis, conte
   try {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 14000);
+      const timer = setTimeout(() => controller.abort(), 24000);
       try {
         const response = await fetch("/api/agent", {
           method: "POST",
@@ -144,7 +144,13 @@ export async function requestAgentReply({ message, history = [], analysis, conte
           break;
         }
         const payload = await response.json();
-        if (!payload?.reply || typeof payload.reply !== "string") break;
+        if (!payload?.reply || typeof payload.reply !== "string") {
+          if (attempt === 0 && payload?.retryable) {
+            await new Promise((resolve) => setTimeout(resolve, 450));
+            continue;
+          }
+          break;
+        }
         return {
           reply: payload.reply.trim(),
           kind: typeof payload.kind === "string" ? payload.kind : /[？?]/.test(payload.reply) ? "question" : localTurn.kind,

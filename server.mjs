@@ -32,6 +32,20 @@ function json(res, status, value) {
   res.end(JSON.stringify(value));
 }
 
+function beginJsonStream(res) {
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store, no-transform",
+    "X-Accel-Buffering": "no",
+  });
+  res.write(" ");
+  res.flushHeaders?.();
+}
+
+function endJsonStream(res, value) {
+  res.end(JSON.stringify(value));
+}
+
 async function readJsonBody(req) {
   const chunks = [];
   let size = 0;
@@ -79,6 +93,7 @@ async function agentReply(req, res) {
   const system = `${systemPrompt}\n\n## 本轮产品上下文\n${JSON.stringify({ babyName: context.babyName, lifeStage: context.lifeStage, cycleDay: context.cycleDay, cycleAnchorConfirmed: context.cycleAnchorConfirmed, communicationStyle: context.communicationStyle, needs: context.needs })}\n\n## 本轮唯一任务\n${requestedTurnKind}。如果任务是 question，只问一个问题，不提前给行动；如果是 action，只自然引出一个行动，不再追加问题；如果是 assessment，清楚说明为什么普通照护还不够，不弹普通行动。\n\n## 本轮专业资料包\n${evidence.length ? JSON.stringify(evidence) : "本轮没有检索到适合直接引用的已定位资料。不要编造专业结论或来源。"}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 22000);
+  beginJsonStream(res);
   try {
     const response = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
@@ -93,19 +108,19 @@ async function agentReply(req, res) {
     });
     if (!response.ok) {
       console.warn(`Agent provider error: ${response.status}`);
-      return json(res, 502, { error: "agent_provider_error", status: response.status });
+      return endJsonStream(res, { error: "agent_provider_error", status: response.status, retryable: response.status >= 500 });
     }
     const payload = await response.json();
     const reply = payload?.choices?.[0]?.message?.content;
     if (typeof reply !== "string" || !reply.trim()) {
       console.warn("Agent provider returned an empty reply");
-      return json(res, 502, { error: "agent_empty_reply" });
+      return endJsonStream(res, { error: "agent_empty_reply", retryable: true });
     }
     const actualKind = /[？?]/.test(reply) && requestedTurnKind === "action" ? "question" : requestedTurnKind;
-    return json(res, 200, { reply: reply.trim(), kind: actualKind, model: apiModel, evidence });
+    return endJsonStream(res, { reply: reply.trim(), kind: actualKind, model: apiModel, evidence });
   } catch (error) {
     console.warn(`Agent request failed: ${error.name || "unknown"}`);
-    return json(res, error.name === "AbortError" ? 504 : 502, { error: error.name === "AbortError" ? "agent_timeout" : "agent_unavailable" });
+    return endJsonStream(res, { error: error.name === "AbortError" ? "agent_timeout" : "agent_unavailable", retryable: true });
   } finally {
     clearTimeout(timer);
   }
