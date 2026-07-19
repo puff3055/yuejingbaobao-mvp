@@ -91,13 +91,20 @@ async function agentReply(req, res) {
       }),
       signal: controller.signal,
     });
-    if (!response.ok) return json(res, 502, { error: "agent_provider_error", status: response.status });
+    if (!response.ok) {
+      console.warn(`Agent provider error: ${response.status}`);
+      return json(res, 502, { error: "agent_provider_error", status: response.status });
+    }
     const payload = await response.json();
     const reply = payload?.choices?.[0]?.message?.content;
-    if (typeof reply !== "string" || !reply.trim()) return json(res, 502, { error: "agent_empty_reply" });
+    if (typeof reply !== "string" || !reply.trim()) {
+      console.warn("Agent provider returned an empty reply");
+      return json(res, 502, { error: "agent_empty_reply" });
+    }
     const actualKind = /[？?]/.test(reply) && requestedTurnKind === "action" ? "question" : requestedTurnKind;
     return json(res, 200, { reply: reply.trim(), kind: actualKind, model: apiModel, evidence });
   } catch (error) {
+    console.warn(`Agent request failed: ${error.name || "unknown"}`);
     return json(res, error.name === "AbortError" ? 504 : 502, { error: error.name === "AbortError" ? "agent_timeout" : "agent_unavailable" });
   } finally {
     clearTimeout(timer);

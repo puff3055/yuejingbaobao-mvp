@@ -120,33 +120,53 @@ export async function requestAgentReply({ message, history = [], analysis, conte
     evidence: localEvidence,
   };
   if (!context.allowRemote) return fallback;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 18000);
+  const requestBody = JSON.stringify({
+    message,
+    history: history.slice(-10).map(({ role, content }) => ({ role, content })),
+    context: { ...context, requestedTurnKind: localTurn.kind },
+  });
   try {
-    const response = await fetch("/api/agent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        history: history.slice(-10).map(({ role, content }) => ({ role, content })),
-        context: { ...context, requestedTurnKind: localTurn.kind },
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) return fallback;
-    const payload = await response.json();
-    if (!payload?.reply || typeof payload.reply !== "string") return fallback;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 14000);
+      try {
+        const response = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          if (attempt === 0 && response.status >= 500) {
+            await new Promise((resolve) => setTimeout(resolve, 450));
+            continue;
+          }
+          break;
+        }
+        const payload = await response.json();
+        if (!payload?.reply || typeof payload.reply !== "string") break;
+        return {
+          reply: payload.reply.trim(),
+          kind: typeof payload.kind === "string" ? payload.kind : /[？?]/.test(payload.reply) ? "question" : localTurn.kind,
+          quickReplies: Array.isArray(payload.quickReplies) ? payload.quickReplies : localTurn.quickReplies,
+          mode: "connected",
+          model: payload.model || null,
+          evidence: Array.isArray(payload.evidence) ? payload.evidence : [],
+        };
+      } catch {
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 450));
+          continue;
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+    }
     return {
-      reply: payload.reply.trim(),
-      kind: typeof payload.kind === "string" ? payload.kind : /[？?]/.test(payload.reply) ? "question" : localTurn.kind,
-      quickReplies: Array.isArray(payload.quickReplies) ? payload.quickReplies : localTurn.quickReplies,
-      mode: "connected",
-      model: payload.model || null,
-      evidence: Array.isArray(payload.evidence) ? payload.evidence : [],
+      ...fallback,
+      reply: `刚刚联网没有接稳。这一小句是我在设备里先接住的：${fallback.reply}`,
     };
   } catch {
-    return fallback;
-  } finally {
-    clearTimeout(timer);
+    return { ...fallback, reply: `刚刚联网没有接稳。这一小句是我在设备里先接住的：${fallback.reply}` };
   }
 }
