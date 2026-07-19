@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AgentPipelineError, canonicalizeAgentPlan, orchestrateAgentTurn } from "./agentOrchestrator.js";
+import { AgentPipelineError, canonicalizeAgentPlan, composerSchemaForTurn, orchestrateAgentTurn } from "./agentOrchestrator.js";
 
 function facts(rawText) {
   return {
@@ -110,6 +110,15 @@ test("planner facts and empty retrieval fields are canonicalized only from exact
     certainty: "explicit",
   }]);
   assert.deepEqual(result.knowledgeNeed, { needed: false, category: "none", query: null, reason: null });
+});
+
+test("the provider schema enforces exactly one question only on question turns", () => {
+  const questionPattern = new RegExp(composerSchemaForTurn("question").properties.reply.pattern);
+  const answerPattern = new RegExp(composerSchemaForTurn("answer").properties.reply.pattern);
+  assert.equal(questionPattern.test("我想看看，这会儿是坐着也痛吗？"), true);
+  assert.equal(questionPattern.test("妳现在还能坐着吗？走动会更痛吗？"), false);
+  assert.equal(answerPattern.test("这张知识卡在解释疼痛可能涉及的机制。"), true);
+  assert.equal(answerPattern.test("要不要再看看？"), false);
 });
 
 test("a knowledge card can only use a URL returned by the actual PubMed retrieval", async () => {

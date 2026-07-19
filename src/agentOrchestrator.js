@@ -177,6 +177,20 @@ export function canonicalizeAgentPlan(plan, { message, memories = [] }) {
   };
 }
 
+export function composerSchemaForTurn(turnKind) {
+  const questionTurn = ["question", "follow_up"].includes(turnKind);
+  return {
+    ...AGENT_COMPOSER_SCHEMA,
+    properties: {
+      ...AGENT_COMPOSER_SCHEMA.properties,
+      reply: {
+        ...AGENT_COMPOSER_SCHEMA.properties.reply,
+        pattern: questionTurn ? "^[^？?]*[？?][^？?]*$" : "^[^？?]*$",
+      },
+    },
+  };
+}
+
 function shouldUseFastCompanionTurn({ message, history, memories, context }) {
   if (context.fastCompanionAllowed !== true) return false;
   const text = message.trim();
@@ -309,7 +323,7 @@ export async function orchestrateAgentTurn({
     apiKey,
     system: composerSystem,
     messages: [...history, { role: "user", content: message }],
-    schema: AGENT_COMPOSER_SCHEMA,
+    schema: composerSchemaForTurn(plan.turnKind),
     schemaName: "menstrual_baby_compose",
     temperature: 0.38,
     fetchImpl,

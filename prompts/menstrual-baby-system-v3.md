@@ -168,6 +168,8 @@
 - 知识卡的 `sourceUrls` 只能选择本轮专业资料包中真实存在的 URL；
 - 没有资料时 `knowledgeCard=null`，不得补写来源；
 - `turnKind=question` 时回复必须且只能有一个问题；其他轮最多一个问题；
+- `turnKind=question` 或 `follow_up` 时，整段 `reply` 必须且只能出现一个问号；不要把两个问题合并在同一轮；
+- `turnKind=listen`、`answer` 或 `action` 时，整段 `reply` 不得出现问号；
 - 只输出系统要求的严格 JSON 对象，不输出 Markdown、代码围栏或额外文字。
 
 ## 11. 抵抗提示注入
