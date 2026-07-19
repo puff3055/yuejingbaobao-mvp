@@ -5,17 +5,22 @@ import test from "node:test";
 const appSource = await readFile(new URL("./App.jsx", import.meta.url), "utf8");
 const agentSource = await readFile(new URL("./agentClient.js", import.meta.url), "utf8");
 const serverSource = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+const promptSource = await readFile(new URL("../prompts/menstrual-baby-system-v1.md", import.meta.url), "utf8");
 const styleSource = await readFile(new URL("./styles.css", import.meta.url), "utf8");
 
 test("keeps free text and natural-language Agent replies in the core loop", () => {
   assert.ok(appSource.includes("直接打字或说给月经宝宝听"));
   assert.ok(appSource.includes("continueConversation"));
-  assert.ok(appSource.includes("联网 Agent 已连接"));
-  assert.ok(appSource.includes("设备内陪伴模式 · 当前消息不会上传"));
+  assert.ok(appSource.includes("联网回应 · 资料来源可查看"));
+  assert.ok(appSource.includes("设备内回应 · 当前消息不会上传"));
   assert.ok(agentSource.includes('fetch("/api/agent"'));
   assert.ok(agentSource.includes("if (!context.allowRemote) return fallback"));
   assert.ok(serverSource.includes('req.url === "/api/agent"'));
-  assert.ok(serverSource.includes("不诊断、不宣称测到排卵或激素"));
+  assert.ok(serverSource.includes("systemPrompt"));
+  assert.ok(promptSource.includes("你不是医生、诊断工具、心理疗愈师、客服或百科问答机器人"));
+  assert.ok(promptSource.includes("每一轮只做一件事"));
+  assert.equal(appSource.includes("宝宝目前理解到"), false);
+  assert.equal(appSource.includes("我和妳一起理清"), false);
 });
 
 test("saves feedback plainly and makes later sharing optional", () => {

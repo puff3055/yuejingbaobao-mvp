@@ -253,6 +253,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .thinking-dots { display: flex; gap: 4px; }
 .thinking-dots i { width: 6px; height: 6px; border-radius: 50%; background: #9b89ad; animation: thinking-dot 1.2s ease-in-out infinite; }
 .thinking-dots i:nth-child(2) { animation-delay: .16s; }.thinking-dots i:nth-child(3) { animation-delay: .32s; }
+.agent-quick-replies { display: grid; gap: 7px; margin: -2px 0 14px 47px; }
+.agent-quick-replies > small { color: #918797; font: 8px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; }
+.agent-quick-replies > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.agent-quick-replies button { min-height: 34px; padding: 7px 11px; border-radius: 14px; color: #6f5d7e; background: rgba(255,255,255,.76); border: 1px solid rgba(116,96,139,.16); font: 9px/1.35 -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 6px 16px rgba(71,57,90,.05); }
+.agent-quick-replies .quick-reply-freeform { justify-self: start; min-height: 28px; padding: 4px 2px; color: #8a7b94; background: transparent; border: 0; box-shadow: none; text-decoration: underline; text-underline-offset: 3px; }
+.agent-evidence-card { margin-top: 9px; padding-top: 8px; border-top: 1px solid rgba(114,97,135,.12); }
+.agent-evidence-card summary { cursor: pointer; color: #756484; font: 8.5px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+.agent-evidence-card > div { margin-top: 8px; padding: 9px; border-radius: 12px; background: rgba(239,233,244,.74); }
+.agent-evidence-card strong, .agent-evidence-card small, .agent-evidence-card a { display: block; }
+.agent-evidence-card strong { color: #65596f; font: 9.5px/1.55 -apple-system, BlinkMacSystemFont, sans-serif; }
+.agent-evidence-card small { margin-top: 5px; color: #8d8392; font: 8px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+.agent-evidence-card a { margin-top: 6px; color: #725f82; font: 8px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; text-decoration: underline; text-underline-offset: 2px; }
 .understanding-summary { margin: 2px 0 12px 45px; padding: 10px 11px; border-radius: 16px; color: #706479; background: rgba(241,236,245,.82); border: 1px solid rgba(113,95,137,.12); }
 .understanding-summary > div { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
 .understanding-summary small { color: #91889a; font: 8px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; white-space: nowrap; }

@@ -1,14 +1,18 @@
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { selectEvidencePackets } from "./src/agentKnowledge.js";
 
 const root = fileURLToPath(new URL("./dist", import.meta.url));
+const systemPrompt = readFileSync(fileURLToPath(new URL("./prompts/menstrual-baby-system-v1.md", import.meta.url)), "utf8");
 const port = Number(process.env.PORT || 4173);
 const apiBase = (process.env.AGENT_API_BASE_URL || "").replace(/\/$/, "");
 const apiModel = process.env.AGENT_API_MODEL || "";
 const apiKey = process.env.AGENT_API_KEY || "";
 const configured = Boolean(apiBase && apiModel && apiKey);
+let knowledgeCache = null;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -48,6 +52,17 @@ function cleanHistory(history) {
   });
 }
 
+async function loadKnowledgeClaims() {
+  if (knowledgeCache) return knowledgeCache;
+  try {
+    const release = JSON.parse(await readFile(join(root, "data/knowledge-claims.json"), "utf8"));
+    knowledgeCache = Array.isArray(release) ? release : release.records || [];
+  } catch {
+    knowledgeCache = [];
+  }
+  return knowledgeCache;
+}
+
 async function agentReply(req, res) {
   if (!configured) return json(res, 503, { error: "agent_not_configured" });
   let body;
@@ -59,7 +74,9 @@ async function agentReply(req, res) {
   const message = typeof body.message === "string" ? body.message.trim().slice(0, 2400) : "";
   if (!message) return json(res, 400, { error: "message_required" });
   const context = body.context && typeof body.context === "object" ? body.context : {};
-  const system = `你是“月经宝宝”，一个女本位、温暖但不越界的月经健康陪伴 Agent。先用自然语言回应用户，再提供卡片或行动：\n1. 面向用户时，所有第二人称都写作“妳”；\n2. 用一两句话复述妳理解到的身体感受、现实限制与担心；\n3. 每次最多问一个真正有助于判断下一步的问题，优先时间、严重程度、变化、出血、伴随症状、功能影响、已尝试行动与结果；\n4. 不诊断、不宣称测到排卵或激素，不把日历阶段写成固定情绪或能力；\n5. 若用户描述紧急危险，明确建议及时联系当地急救或医疗服务；\n6. 不使用“姨妈/大姨妈”，统一说“月经”；\n7. 语气像在乎她的伙伴，简洁、具体，不撒娇，不假装医生；根据 communicationStyle 调整节奏。\n用户授权上下文（只用于本次回应）：${JSON.stringify({ babyName: context.babyName, lifeStage: context.lifeStage, cycleDay: context.cycleDay, cycleAnchorConfirmed: context.cycleAnchorConfirmed, communicationStyle: context.communicationStyle, needs: context.needs })}`;
+  const evidence = selectEvidencePackets(await loadKnowledgeClaims(), message);
+  const requestedTurnKind = ["question", "answer", "action", "assessment", "conversation"].includes(context.requestedTurnKind) ? context.requestedTurnKind : "conversation";
+  const system = `${systemPrompt}\n\n## 本轮产品上下文\n${JSON.stringify({ babyName: context.babyName, lifeStage: context.lifeStage, cycleDay: context.cycleDay, cycleAnchorConfirmed: context.cycleAnchorConfirmed, communicationStyle: context.communicationStyle, needs: context.needs })}\n\n## 本轮唯一任务\n${requestedTurnKind}。如果任务是 question，只问一个问题，不提前给行动；如果是 action，只自然引出一个行动，不再追加问题；如果是 assessment，清楚说明为什么普通照护还不够，不弹普通行动。\n\n## 本轮专业资料包\n${evidence.length ? JSON.stringify(evidence) : "本轮没有检索到适合直接引用的已定位资料。不要编造专业结论或来源。"}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 22000);
   try {
@@ -68,8 +85,8 @@ async function agentReply(req, res) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: apiModel,
-        temperature: 0.45,
-        max_tokens: 420,
+        temperature: 0.35,
+        max_tokens: 320,
         messages: [{ role: "system", content: system }, ...cleanHistory(body.history), { role: "user", content: message }],
       }),
       signal: controller.signal,
@@ -78,7 +95,8 @@ async function agentReply(req, res) {
     const payload = await response.json();
     const reply = payload?.choices?.[0]?.message?.content;
     if (typeof reply !== "string" || !reply.trim()) return json(res, 502, { error: "agent_empty_reply" });
-    return json(res, 200, { reply: reply.trim(), model: apiModel });
+    const actualKind = /[？?]/.test(reply) && requestedTurnKind === "action" ? "question" : requestedTurnKind;
+    return json(res, 200, { reply: reply.trim(), kind: actualKind, model: apiModel, evidence });
   } catch (error) {
     return json(res, error.name === "AbortError" ? 504 : 502, { error: error.name === "AbortError" ? "agent_timeout" : "agent_unavailable" });
   } finally {

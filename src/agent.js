@@ -15,7 +15,7 @@ const TAG_RULES = [
   [/(量大|出血多|漏血|浸透)/, "出血/漏血"],
   [/(很累|乏力|没力气|快耗尽|精力.{0,4}(?:低|差|不够|耗尽))/, "精力偏低"],
   [/(烦躁|有点烦|焦虑|想哭|低落|情绪|心情[:：]\s*(?:有点烦|很低落))/, "情绪变化"],
-  [/(汇报|会议|上班|工作|考试|答辩|出差|旅行|高铁)/, "现实任务不能取消"],
+  [/(?:有会|开会|会议|汇报|上班|工作|考试|答辩|出差|旅行|高铁)/, "现实任务不能取消"],
   [/(睡不好|失眠|熬夜|早醒)/, "睡眠变化"],
   [/(乳房|胸胀|胸痛)/, "乳房胀痛"],
   [/(初潮|还没有来过月经|还没来过月经|第一次(?:来)?月经)/, "初潮准备"],
@@ -46,15 +46,20 @@ export function analyzeInput(text) {
   const knowledgeIntent = tags.includes("知识求证");
   const firstPeriodIntent = tags.includes("初潮准备");
   const lifeReviewIntent = tags.includes("长期变化整理");
+  const heatMentioned = /热敷|热水袋|暖宝宝|温热下腹/.test(normalized);
+  const heatFailed = heatMentioned && /没用|没有用|没帮助|没有帮助|更痛|更不舒服|烫伤/.test(normalized);
   const stateSummary = [
     tags.includes("疼痛很强") ? "疼痛已经很强" : null,
     tags.includes("情绪变化") ? "心情正在变化" : null,
     tags.includes("精力偏低") ? "精力快要耗尽" : null,
   ].filter(Boolean).join("、");
-  const taskMatch = normalized.match(/汇报|会议|上班|工作|考试|答辩|出差|旅行|高铁/);
-  const task = taskMatch?.[0];
+  const taskMatch = normalized.match(/有会|开会|会议|汇报|上班|工作|考试|答辩|出差|旅行|高铁/);
+  const taskToken = taskMatch?.[0];
+  const task = /有会|开会|会议/.test(taskToken || "") ? "会议" : taskToken;
   const timeMatches = [...normalized.matchAll(/(?:明早|明晚|今晚|今天|明天(?:上午|下午|晚上)?|(?:上午|下午|晚上)?(?:[一二三四五六七八九十]|\d{1,2})点(?:半|\d{1,2}分)?)/g)];
-  const time = timeMatches.filter((match) => !taskMatch || match.index <= taskMatch.index).at(-1)?.[0];
+  const explicitTime = timeMatches.filter((match) => !taskMatch || match.index <= taskMatch.index).at(-1)?.[0];
+  const coarseTime = taskMatch ? [...normalized.slice(0, taskMatch.index).matchAll(/上午|下午|晚上/g)].at(-1)?.[0] : null;
+  const time = explicitTime || coarseTime;
   const taskDetail = [time, task].filter(Boolean).join("的");
   const context = hasConstraint
     ? `妳需要在身体不舒服时${taskDetail ? `面对${taskDetail}` : "完成今天不能取消的事"}。我会把现实限制和身体感受放在一起。`
@@ -85,8 +90,21 @@ export function analyzeInput(text) {
       : knowledgeIntent
         ? "妳是在什么处境下看到这条说法的？现在最想用它解决什么问题？"
       : "这件事从什么时候开始？和妳过去的周期相比，有什么明显不同吗？",
-    recommendedGift: hasConstraint ? "meeting" : hasPain ? "heat" : firstPeriodIntent ? "first-period" : lifeReviewIntent ? "timeline" : knowledgeIntent ? "evidence" : "sleep",
+    blockedActionId: heatFailed ? "heat" : null,
+    recommendedGift: heatMentioned && !heatFailed ? "heat" : hasConstraint ? "meeting" : hasPain ? "heat" : firstPeriodIntent ? "first-period" : lifeReviewIntent ? "timeline" : knowledgeIntent ? "evidence" : "sleep",
   };
+}
+
+export function getAgentQuickReplies(analysis) {
+  if (!analysis) return [];
+  const hasPain = analysis.tags.some((tag) => /疼痛|头痛|腰背/.test(tag));
+  const hasConstraint = analysis.tags.includes("现实任务不能取消");
+  if (hasPain && hasConstraint) return ["还能走动，但很难集中", "走动或坐着都很困难"];
+  if (hasPain) return ["还能活动，但很难受", "已经影响走路或睡觉"];
+  if (analysis.intent === "knowledge") return ["先看这说法靠不靠谱", "先看它和我有什么关系"];
+  if (analysis.tags.includes("初潮准备")) return ["我担心没有用品", "我不知道可以找谁"];
+  if (analysis.tags.includes("长期变化整理")) return ["先说出血和周期变化", "先说试过什么、效果怎样"];
+  return [];
 }
 
 export function createEpisode(analysis, effect, zones = [], gift = null, snapshot = null) {

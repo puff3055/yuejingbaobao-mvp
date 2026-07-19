@@ -48,7 +48,7 @@ import {
   SUPPORT_EXPLANATIONS,
   SUPPORT_NEEDS,
 } from "./data.js";
-import { analyzeInput, applyEpisodeOutcome, createEpisode, findSimilarEpisode, recallCopy } from "./agent.js";
+import { analyzeInput, applyEpisodeOutcome, createEpisode, findSimilarEpisode } from "./agent.js";
 import { requestAgentReply } from "./agentClient.js";
 import { deriveCycleDayFromStart, getCycleMoment, localDateValue, upsertRhythmLog } from "./cycle.js";
 import { buildPublicPracticeClusters, normalizeMenstrualLanguage, PROFESSIONAL_CATEGORIES, prepareProfessionalCards } from "./knowledge.js";
@@ -340,6 +340,7 @@ export function App() {
             text={agentSeedText}
             zones={selectedZones}
             recordSnapshot={recordSnapshot}
+            knowledgeClaims={knowledge.claims}
             store={store}
             setStore={setStore}
             onClose={closeAgent}
@@ -645,26 +646,28 @@ function PlainScale({ label, note, value, options, onChange, allowClear = false 
   return <section className="plain-scale"><div><strong>{label}</strong><small>{note}</small></div><div>{options.map((option) => <button type="button" key={option} className={value === option ? "selected" : ""} aria-pressed={value === option} onClick={() => onChange(allowClear && value === option ? null : option)}>{option}</button>)}</div></section>;
 }
 
-function AgentPanel({ text, zones, recordSnapshot, store, setStore, onClose, showMoment, goTo }) {
+function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims, store, setStore, onClose, showMoment, goTo }) {
   const initialText = text.trim();
   const [workingText, setWorkingText] = useState(initialText);
   const [chatDraft, setChatDraft] = useState("");
   const [messages, setMessages] = useState([]);
   const [agentMode, setAgentMode] = useState("checking");
   const [isThinking, setIsThinking] = useState(false);
+  const [turnKind, setTurnKind] = useState(null);
+  const [turnQuickReplies, setTurnQuickReplies] = useState([]);
   const [priorEpisodes] = useState(() => store.episodes);
   const chatInputRef = useRef(null);
   const initialSentRef = useRef(false);
   const { voiceStatus, isListening, toggleVoice } = useVoiceDraft(chatDraft, setChatDraft);
   const analysis = useMemo(() => workingText ? analyzeInput(workingText) : null, [workingText]);
-  const remembered = useMemo(() => analysis ? findSimilarEpisode(priorEpisodes, analysis) : null, [priorEpisodes, analysis]);
   const [step, setStep] = useState(initialText ? "thinking" : "compose");
   const gift = analysis ? CARE_GIFTS.find((item) => item.id === analysis.recommendedGift) || CARE_GIFTS[0] : null;
+  const giftSource = gift?.id === "meeting" && analysis?.taskDetail
+    ? `妳主动提到的现实任务：${analysis.taskDetail}；不是群体周期处方`
+    : gift?.source;
   const [effect, setEffect] = useState(null);
   const companionVisual = store.profile.lifeStage === "seed" ? "/assets/lifecycle/moon-seed.png" : store.profile.lifeStage === "phoenix" ? "/assets/lifecycle/blood-moon-phoenix.png" : "/assets/moon-sea-hero.png";
   const companionTitle = store.profile.lifeStage === "seed" ? "月之种子" : store.profile.lifeStage === "phoenix" ? "血月凤凰" : `${store.profile.babyName} · 月经宝宝`;
-  const isFirstPeriodPreparation = analysis?.tags.includes("初潮准备");
-  const isLifeReview = analysis?.tags.includes("长期变化整理");
   const emergencySafety = ["bleeding", "crisis"].includes(analysis?.redFlag?.code);
 
   const continueConversation = async (nextText, { initial = false } = {}) => {
@@ -673,6 +676,7 @@ function AgentPanel({ text, zones, recordSnapshot, store, setStore, onClose, sho
     const hasConversationContext = initial ? false : Boolean(workingText);
     const nextWorkingText = hasConversationContext ? `${workingText}\n用户补充：${clean}` : clean;
     const nextAnalysis = analyzeInput(nextWorkingText);
+    const nextRemembered = findSimilarEpisode(priorEpisodes, nextAnalysis);
     const priorMessages = messages;
     setWorkingText(nextWorkingText);
     setMessages((current) => [...current, { id: `user-${Date.now()}-${current.length}`, role: "user", content: clean }]);
@@ -690,7 +694,8 @@ function AgentPanel({ text, zones, recordSnapshot, store, setStore, onClose, sho
       message: clean,
       history: priorMessages,
       analysis: nextAnalysis,
-      babyName: store.profile.babyName,
+      memory: nextRemembered,
+      knowledgeClaims,
       context: {
         babyName: store.profile.babyName,
         lifeStage: store.profile.lifeStage,
@@ -701,12 +706,12 @@ function AgentPanel({ text, zones, recordSnapshot, store, setStore, onClose, sho
         allowRemote: store.privacy.agentCloudConsent === true,
       },
     });
-    setMessages((current) => [...current, { id: `assistant-${Date.now()}-${current.length}`, role: "assistant", content: result.reply }]);
+    setMessages((current) => [...current, { id: `assistant-${Date.now()}-${current.length}`, role: "assistant", content: result.reply, evidence: result.evidence || [] }]);
     setAgentMode(result.mode);
+    setTurnKind(result.kind || "conversation");
+    setTurnQuickReplies(result.quickReplies || []);
     setIsThinking(false);
-    const soundsUncertain = /(不确定|好像有变化|不太一样|突然|加重|异常出血|头晕|发烧|发热|呕吐)/.test(clean)
-      && !/(和(?:以前|以往)差不多|没有这些变化|没这些变化|没有发烧|没发烧|没有发热|没发热)/.test(clean);
-    setStep(hasConversationContext ? (soundsUncertain ? "uncertain" : "care") : "reflect");
+    setStep(result.kind === "action" ? "care" : result.kind === "assessment" ? "uncertain" : result.kind === "question" ? "reflect" : "compose");
   };
 
   useEffect(() => {
@@ -725,6 +730,10 @@ function AgentPanel({ text, zones, recordSnapshot, store, setStore, onClose, sho
       return;
     }
     continueConversation(chatDraft);
+  };
+  const focusComposer = () => {
+    chatInputRef.current?.focus();
+    chatInputRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
   const saveEffect = (value) => {
     const nextEpisode = { ...createEpisode(analysis, value, zones, gift, recordSnapshot), cycleId: store.cycleStartDate || null };
@@ -750,28 +759,26 @@ function AgentPanel({ text, zones, recordSnapshot, store, setStore, onClose, sho
 
   return (
     <div className="modal-layer agent-layer">
-      <div className="sheet-header"><button className="icon-button" aria-label="返回小窝" onClick={onClose}><ArrowLeft /></button><div><p className="eyebrow">{companionTitle} · 周期 Agent</p><h2>我和妳一起理清</h2></div><ShieldCheck /></div>
-      <div className={`agent-engine-state ${agentMode}`}><span />{agentMode === "connected" ? "联网 Agent 已连接" : agentMode === "device" ? "设备内陪伴模式 · 当前消息不会上传" : agentMode === "local" ? "设备内安全梳理 · 联网服务未响应" : store.privacy.agentCloudConsent ? "正在确认联网 Agent" : "设备内陪伴模式"}</div>
+      <div className="sheet-header"><button className="icon-button" aria-label="返回小窝" onClick={onClose}><ArrowLeft /></button><div><p className="eyebrow">妳的小窝 · {companionTitle}</p><h2>说给我听吧</h2></div><ShieldCheck /></div>
+      <div className={`agent-engine-state ${agentMode}`}><span />{agentMode === "connected" ? "联网回应 · 资料来源可查看" : agentMode === "device" ? "设备内回应 · 当前消息不会上传" : agentMode === "local" ? "设备内回应 · 联网暂不可用" : store.privacy.agentCloudConsent ? "正在连接专业资料" : "设备内回应"}</div>
       <div className="chat-thread" aria-live="polite">
-        {!messages.length && !initialText && <div className={`message baby-message agent-welcome mini-stage-${store.profile.lifeStage}`}><span className="mini-baby"><img src={companionVisual} alt="" /></span><div><p><strong>我在这里。</strong><br />妳可以像发消息一样告诉我：身体哪里不舒服、什么时候开始、和以前有什么不同，或今天还有什么必须完成的事。</p><small><Lock /> 我会先回应和追问；只有妳确认结果后，才会写进照护记录。</small></div></div>}
-        {messages.map((message) => message.role === "user" ? <div className="message user-message" key={message.id}>{message.content}</div> : <div className={`message baby-message mini-stage-${store.profile.lifeStage}`} key={message.id}><span className="mini-baby"><img src={companionVisual} alt="" /></span><div><p>{message.content}</p></div></div>)}
-        {isThinking && <div className="message baby-message thinking-message"><span className="mini-baby"><img src={companionVisual} alt="" /></span><div><span className="thinking-dots"><i /><i /><i /></span><small>宝宝正在理解妳说的重点，不急着下结论</small></div></div>}
+        {!messages.length && !initialText && <div className={`message baby-message agent-welcome mini-stage-${store.profile.lifeStage}`}><span className="mini-baby"><img src={companionVisual} alt="" /></span><div><p><strong>小窝安静下来了。</strong><br />妳不必先整理好。身体哪里不舒服、今天发生了什么，或者只想问一个问题，都可以从这里开始。</p><small><Lock /> 只有妳确认要留下的结果，才会成为长期照护记忆。</small></div></div>}
+        {messages.map((message) => message.role === "user" ? <div className="message user-message" key={message.id}>{message.content}</div> : <div className={`message baby-message mini-stage-${store.profile.lifeStage}`} key={message.id}><span className="mini-baby"><img src={companionVisual} alt="" /></span><div><p>{message.content}</p>{message.evidence?.length > 0 && <details className="agent-evidence-card"><summary>查看专业资料与边界</summary>{message.evidence.map((item) => <div key={item.claimId}><strong>{item.claim}</strong><small>{item.limitations || item.cannotConclude}</small>{item.sources?.[0] && <a href={item.sources[0].url} target="_blank" rel="noreferrer">{item.sources[0].title} · {item.sources[0].locator}</a>}</div>)}</details>}</div></div>)}
+        {isThinking && <div className="message baby-message thinking-message"><span className="mini-baby"><img src={companionVisual} alt="" /></span><div><span className="thinking-dots"><i /><i /><i /></span><small>我在看看，什么信息真的和这一刻有关</small></div></div>}
         {analysis && step === "safety" ? (
-          <div className="safety-card"><WarningCircle weight="fill" /><div><p className="eyebrow">先处理安全，再继续聊天</p><h3>{analysis.redFlag.title}</h3><p>{analysis.redFlag.action}</p><div className="boundary-note">宝宝不会根据一句话诊断，但这类信号不适合继续普通照护流程。</div><div className="safety-actions">{emergencySafety && <a className="primary-button" href="tel:120">联系紧急帮助（中国大陆 120）</a>}<button className={emergencySafety ? "secondary-button" : "primary-button"} onClick={onClose}>{emergencySafety ? "我已看见" : "我会尽快联系医疗专业人员"}</button></div></div></div>
+          <div className="safety-card"><WarningCircle weight="fill" /><div><p className="eyebrow">这句话里有需要认真对待的信号</p><h3>{analysis.redFlag.title}</h3><p>{analysis.redFlag.action}</p><div className="boundary-note">普通对话无法判断原因，也不能替代及时的专业评估。</div><div className="safety-actions">{emergencySafety && <a className="primary-button" href="tel:120">联系紧急帮助（中国大陆 120）</a>}<button className={emergencySafety ? "secondary-button" : "primary-button"} onClick={onClose}>{emergencySafety ? "我已看见" : "我会尽快联系医疗专业人员"}</button></div></div></div>
         ) : analysis && !isThinking ? (
           <>
-            <div className="understanding-summary"><div><small>宝宝目前理解到</small><span>{analysis.tags.map((tag) => <b key={tag}>{tag}</b>)}</span></div><p>{analysis.context}</p></div>
-            {remembered && <div className="context-memory"><Clock /><div><small>妳的照护记录里有一条相似线索</small><p>{recallCopy([remembered], analysis)}</p></div></div>}
-            {step === "reflect" && <div className="agent-card"><p className="eyebrow">{analysis.intent === "knowledge" ? "把公开说法放回妳的处境" : isFirstPeriodPreparation ? "把慌张变成可以准备的事" : isLifeReview ? "先选一条最重要的线" : "宝宝还想确认一件事"}</p><h3>{analysis.followUp}</h3><p className="card-helper">可以直接在下方打字，也可以先选一个最接近的方向。</p>{analysis.intent === "knowledge" ? <><button className="primary-button" onClick={() => setStep("care")}>我正在经历这个困扰</button><button className="secondary-button" onClick={() => setStep("care")}>我只想判断说法是否可靠</button></> : isFirstPeriodPreparation ? <><button className="primary-button" onClick={() => setStep("care")}>先准备学校里的初潮小包</button><button className="secondary-button" onClick={() => setStep("care")}>先确认可以向谁求助</button></> : isLifeReview ? <><button className="primary-button" onClick={() => setStep("care")}>先整理出血与周期变化</button><button className="secondary-button" onClick={() => setStep("care")}>先整理尝试和真实效果</button></> : <><button className="primary-button" onClick={() => setStep("care")}>和以往相似，没有明显新变化</button><button className="secondary-button" onClick={() => setStep("uncertain")}>我不确定 / 好像有变化</button></>}</div>}
-            {step === "uncertain" && <div className="safety-card soft"><Info weight="fill" /><div><h3>先别急着归因给周期</h3><p>如果出现突然加重、异常出血、头晕、发热、持续呕吐或明显影响基本活动，建议尽快联系医疗机构。妳也可以继续打字，把变化时间线告诉宝宝。</p><button className="secondary-button" onClick={() => setStep("care")}>继续看一个低风险行动</button></div></div>}
-            {step === "care" && <div className="gift-action-card"><div className="gift-ribbon">{analysis.intent === "knowledge" ? <BookOpenText weight="fill" /> : <Gift weight="fill" />} {analysis.intent === "knowledge" ? "一个求证动作" : "一个可撤回的照护行动"}</div><h3>{gift.title}</h3><p>{gift.kind}</p><div className="action-how"><Clock /> {gift.how}</div><div className="boundary-note"><ShieldCheck /> {gift.caution}</div>{gift.sourceUrl ? <a className="care-source" href={gift.sourceUrl} target="_blank" rel="noreferrer">查看依据：{gift.source} <CaretRight /></a> : <small>依据：{gift.source}</small>}<button className="primary-button" onClick={() => setStep("feedback")}>{analysis.intent === "knowledge" ? "我看完了，反馈是否更清楚" : "我试过了，反馈真实效果"}</button></div>}
+            {step === "reflect" && turnKind === "question" && turnQuickReplies.length > 0 && <div className="agent-quick-replies"><small>想省一点力，可以直接点</small><div>{turnQuickReplies.map((reply) => <button key={reply} onClick={() => continueConversation(reply)}>{reply}</button>)}</div><button className="quick-reply-freeform" onClick={focusComposer}>我想自己说</button></div>}
+            {step === "uncertain" && <div className="safety-card soft"><Info weight="fill" /><div><h3>这次变化值得进一步确认</h3><p>突然加重、异常出血、头晕、发热、持续呕吐或已经影响基本活动时，建议尽快联系医疗机构。</p><div className="safety-actions"><button className="secondary-button" onClick={focusComposer}>我想继续说</button><button className="secondary-button" onClick={() => setStep("care")}>看看此刻能做什么</button></div></div></div>}
+            {step === "care" && <div className="gift-action-card"><div className="gift-ribbon">{analysis.intent === "knowledge" ? <BookOpenText weight="fill" /> : <Gift weight="fill" />} {analysis.intent === "knowledge" ? "一个求证动作" : "一个可撤回的照护行动"}</div><h3>{gift.title}</h3><p>{gift.kind}</p><div className="action-how"><Clock /> {gift.how}</div><div className="boundary-note"><ShieldCheck /> {gift.caution}</div>{gift.sourceUrl ? <a className="care-source" href={gift.sourceUrl} target="_blank" rel="noreferrer">查看依据：{giftSource} <CaretRight /></a> : <small>依据：{giftSource}</small>}<button className="primary-button" onClick={() => setStep("feedback")}>{analysis.intent === "knowledge" ? "我看完了，反馈是否更清楚" : "我试过了，反馈真实效果"}</button></div>}
             {step === "feedback" && <div className="agent-card feedback-card"><p className="eyebrow">妳的反馈会进入“我的照护记录”</p><h3>{analysis.intent === "knowledge" ? "这次解释让妳更清楚了吗？" : "这个办法真实地帮到妳了吗？"}</h3><button onClick={() => saveEffect("helped")}><span className="effect-orb strong" /><span><strong>{analysis.intent === "knowledge" ? "清楚很多" : "很有帮助"}</strong><small>以后遇到相似处境，可以优先回看</small></span></button><button onClick={() => saveEffect("some")}><span className="effect-orb some" /><span><strong>{analysis.intent === "knowledge" ? "清楚一点" : "有一点帮助"}</strong><small>保留这次结果，但不夸大</small></span></button><button onClick={() => saveEffect("none")}><span className="effect-orb none" /><span><strong>{analysis.intent === "knowledge" ? "还是不清楚" : "没有帮助 / 更不舒服"}</strong><small>下次提醒妳排除或谨慎复用</small></span></button></div>}
             {step === "saved" && <div className="saved-card"><div className="saved-icon"><Check weight="bold" /></div><p className="eyebrow">{store.privacy.localMemory ? "已保存到我的照护记录" : "只保留在当前对话"}</p><h3>{store.privacy.localMemory ? "处境、行动和真实结果都保存好了" : "宝宝尊重妳不留下长期记忆"}</h3><p>{store.privacy.localMemory ? `结果是“${effect === "helped" ? "很有帮助" : effect === "some" ? "有一点帮助" : "没有帮助或更不舒服"}”。妳可以以后在照护记录里回看、删除，或再决定是否整理成匿名经验礼物。` : "关闭本地记忆时，这次结果不会写入档案，也不会被分享。"}</p><div className="saved-actions">{store.privacy.localMemory && <button className="primary-button" onClick={openCareRecords}><BookOpenText /> 查看我的照护记录</button>}<button className="secondary-button" onClick={returnHome}>回到小窝</button></div></div>}
           </>
         ) : null}
       </div>
       <form className="agent-composer" onSubmit={submitChatMessage}>
-        <label htmlFor="agent-live-message">{analysis ? "继续说，宝宝会结合前文理解" : "直接打字或说给月经宝宝听"}</label>
+        <label htmlFor="agent-live-message">{analysis ? "继续说，我会接着前面听" : "直接打字或说给月经宝宝听"}</label>
         <div className="agent-composer-row"><textarea ref={chatInputRef} id="agent-live-message" value={chatDraft} onChange={(event) => setChatDraft(event.target.value)} placeholder={analysis ? "例如：从昨晚开始，比以前更痛，还伴着头晕……" : "说说此刻发生了什么……"} rows={2} /><button type="button" className={isListening ? "voice-button listening" : "voice-button"} onClick={toggleVoice} aria-label={isListening ? "停止语音输入" : "开始语音输入"}>{isListening ? <MicrophoneSlash /> : <Microphone />}</button><button type="submit" disabled={!chatDraft.trim() || isThinking} aria-label="发送给月经宝宝"><PaperPlaneTilt weight="fill" /></button></div>
         <span>{voiceStatus || "发送前可继续修改；不会自动分享到社区"}</span>
       </form>
