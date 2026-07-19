@@ -23,9 +23,12 @@ const TAG_RULES = [
   [/(解释|说法|证据|靠谱吗|适合我|分清)/, "知识求证"],
 ];
 
+const NEGATED_RED_FLAG_PATTERN = /(?:没有|没|无|否认)(?:出现|伴随|发生|明显)?(?:突然加重|突然剧痛|单侧(?:腹|下腹)?(?:痛|疼)|大量出血|异常出血|头晕|晕厥|发烧|发热|持续呕吐|呕吐|异常分泌物)/g;
+
 export function analyzeInput(text) {
   const normalized = text.trim();
-  const redFlag = RED_FLAGS.find((rule) => rule.test.test(normalized));
+  const safetyText = normalized.replace(NEGATED_RED_FLAG_PATTERN, "");
+  const redFlag = RED_FLAGS.find((rule) => rule.test.test(safetyText));
   const digitDay = normalized.match(/(?:经期|月经).{0,4}(?:第)?(\d{1,2})天/i)?.[1] || normalized.match(/\bD(\d{1,2})\b/i)?.[1];
   const chineseDayToken = normalized.match(/(?:经期|月经).{0,4}(?:第)?([一二三四五六七八九十]+)天/)?.[1];
   const chineseDayMap = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };

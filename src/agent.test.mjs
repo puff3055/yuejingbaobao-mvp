@@ -61,6 +61,13 @@ test("routes sudden one-sided pain with fever away from self-care", () => {
   assert.match(result.redFlag?.action || "", /尽快联系医疗机构/);
 });
 
+test("does not turn a clear denial of fever into an acute red flag", () => {
+  const result = analyzeInput("经期第二天小腹痛，和以前差不多，没有发烧，也没有头晕。下午还要汇报。");
+  assert.equal(result.redFlag, undefined);
+  assert.ok(result.tags.includes("下腹疼痛"));
+  assert.ok(result.tags.includes("现实任务不能取消"));
+});
+
 test("treats a never-before severe pain pattern as a change worth assessment", () => {
   const result = analyzeInput("从没这么剧痛过，而且出现异常分泌物。");
   assert.equal(result.redFlag?.code, "acute");
