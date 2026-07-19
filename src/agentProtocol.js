@@ -73,7 +73,7 @@ const MEMORY_SCHEMA = {
         additionalProperties: false,
         required: ["key", "label", "value", "source", "certainty"],
         properties: {
-          key: { type: "string", minLength: 1, maxLength: 80 },
+          key: { type: "string", enum: FACT_KEYS },
           label: { type: "string", minLength: 1, maxLength: 80 },
           value: { type: "string", maxLength: 320 },
           source: { type: "string", enum: ["current_user_message", "confirmed_personal_memory", "confirmed_page_record"] },
@@ -241,13 +241,14 @@ function hasFactValue(facts, key) {
 }
 
 function validateFacts(facts, errors, { message = null, memories = [] } = {}) {
+  const hasCurrentMessage = typeof message === "string" && message.trim().length > 0;
   const factKeys = ["rawText", ...FACT_KEYS, "uncertainty", "fieldProvenance"];
   if (!hasOnlyKeys(facts, factKeys)) {
     errors.push("facts_shape");
     return;
   }
   if (typeof facts.rawText !== "string" || facts.rawText.length > 2400) errors.push("facts_rawText");
-  if (typeof message === "string" && facts.rawText.trim() !== message.trim()) errors.push("facts_rawText_mismatch");
+  if (hasCurrentMessage && facts.rawText.trim() !== message.trim()) errors.push("facts_rawText_mismatch");
   ["cycleContext", "onset", "functionalImpact", "differenceFromUsual", "currentConstraint"].forEach((key) => {
     if (!isNullableString(facts[key])) errors.push(`facts_${key}`);
   });
@@ -263,20 +264,32 @@ function validateFacts(facts, errors, { message = null, memories = [] } = {}) {
     if (!hasOnlyKeys(item, ["key", "source", "sourceRef", "quote", "certainty"])) return errors.push("facts_provenance_shape");
     if (!FACT_KEYS.includes(item.key) || !["current_user_message", "confirmed_personal_memory", "confirmed_page_record"].includes(item.source) || !["explicit", "uncertain"].includes(item.certainty)) errors.push("facts_provenance_value");
     if (typeof item.quote !== "string" || !item.quote.trim() || typeof item.sourceRef !== "string" || !item.sourceRef.trim()) errors.push("facts_provenance_value");
-    if (item.source === "current_user_message" && (item.sourceRef !== "current" || (typeof message === "string" && !message.includes(item.quote)))) errors.push("facts_provenance_unverified");
-    if (item.source === "confirmed_personal_memory" && (!memoryById.has(item.sourceRef) || !memoryById.get(item.sourceRef).includes(item.quote))) errors.push("facts_provenance_unverified");
+    if (item.source === "current_user_message" && (item.sourceRef !== "current" || (hasCurrentMessage && !message.includes(item.quote)))) errors.push("facts_provenance_unverified");
+    if (["confirmed_personal_memory", "confirmed_page_record"].includes(item.source) && (!memoryById.has(item.sourceRef) || !memoryById.get(item.sourceRef).includes(item.quote))) errors.push("facts_provenance_unverified");
   });
   FACT_KEYS.filter((key) => hasFactValue(facts, key)).forEach((key) => {
     if (!facts.fieldProvenance.some((item) => item.key === key)) errors.push(`facts_missing_provenance_${key}`);
   });
 }
 
-function validateMemory(memory, errors) {
+function factValues(facts, key) {
+  const value = facts?.[key];
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  return typeof value === "string" && value.trim() ? [value.trim()] : [];
+}
+
+function validateMemory(memory, errors, { facts = null } = {}) {
   if (!hasOnlyKeys(memory, ["shouldOffer", "summary", "fields"])) return errors.push("memory_shape");
   if (typeof memory.shouldOffer !== "boolean" || !isNullableString(memory.summary) || !Array.isArray(memory.fields) || memory.fields.length > 12) return errors.push("memory_fields");
+  if (memory.shouldOffer && memory.fields.length === 0) errors.push("memory_offer_without_fields");
   memory.fields.forEach((field) => {
     if (!hasOnlyKeys(field, ["key", "label", "value", "source", "certainty"])) errors.push("memory_field_shape");
-    else if (typeof field.key !== "string" || typeof field.label !== "string" || typeof field.value !== "string" || !["current_user_message", "confirmed_personal_memory", "confirmed_page_record"].includes(field.source) || !["explicit", "uncertain"].includes(field.certainty)) errors.push("memory_field_value");
+    else if (!FACT_KEYS.includes(field.key) || typeof field.label !== "string" || !field.label.trim() || typeof field.value !== "string" || !field.value.trim() || !["current_user_message", "confirmed_personal_memory", "confirmed_page_record"].includes(field.source) || !["explicit", "uncertain"].includes(field.certainty)) errors.push("memory_field_value");
+    else if (facts) {
+      const hasMatchingFact = factValues(facts, field.key).includes(field.value.trim());
+      const hasMatchingProvenance = facts.fieldProvenance?.some((item) => item.key === field.key && item.source === field.source);
+      if (!hasMatchingFact || !hasMatchingProvenance) errors.push("memory_field_unverified");
+    }
   });
 }
 
@@ -323,7 +336,7 @@ export function validateAgentPlan(value, { message = "", memories = [], actionId
   if (value.actionId && blockedActionIds.includes(value.actionId)) errors.push("action_blocked_by_personal_outcome");
   if (value.turnKind === "action" && !value.actionId) errors.push("action_turn_requires_action");
   if (value.turnKind !== "action" && value.actionId !== null) errors.push("action_wrong_turn");
-  validateMemory(value.memoryDraft, errors);
+  validateMemory(value.memoryDraft, errors, { facts: value.confirmedFactsCandidate });
   if (!hasOnlyKeys(value.knowledgeNeed, ["needed", "category", "query", "reason"])) errors.push("knowledge_need_shape");
   else {
     if (typeof value.knowledgeNeed.needed !== "boolean" || !KNOWLEDGE_CATEGORIES.includes(value.knowledgeNeed.category) || !isNullableString(value.knowledgeNeed.query) || !isNullableString(value.knowledgeNeed.reason)) errors.push("knowledge_need_value");
@@ -371,6 +384,7 @@ export function validateAgentResponse(value, {
   blockedActionIds = [],
   sourceUrls = [],
   message = "",
+  memories = [],
   firstTurn = false,
 } = {}) {
   const errors = [];
@@ -380,7 +394,7 @@ export function validateAgentResponse(value, {
   validatePersonaReply(value.reply, errors, { message, firstTurn });
   if (!AGENT_TURN_KINDS.includes(value.turnKind)) errors.push("turnKind");
   if (countQuestions(value.reply) > 1) errors.push("too_many_questions");
-  validateFacts(value.confirmedFactsCandidate, errors);
+  validateFacts(value.confirmedFactsCandidate, errors, { message, memories });
   if (!isNullableString(value.missingField)) errors.push("missingField");
   if (value.action !== null) {
     if (!hasOnlyKeys(value.action, ["id", "title", "why", "how", "stopWhen", "sources"])) errors.push("action_shape");
@@ -392,7 +406,7 @@ export function validateAgentResponse(value, {
       if (blockedActionIds.includes(value.action.id)) errors.push("action_blocked_by_personal_outcome");
     }
   }
-  validateMemory(value.memoryDraft, errors);
+  validateMemory(value.memoryDraft, errors, { facts: value.confirmedFactsCandidate });
   if (value.knowledgeCard !== null) {
     const card = value.knowledgeCard;
     if (!hasOnlyKeys(card, ["title", "explanation", "relevanceToCurrentSituation", "boundary", "sources"])) errors.push("knowledge_card_shape");

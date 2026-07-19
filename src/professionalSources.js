@@ -60,7 +60,7 @@ function cleanText(value, max = 4000) {
 export function normalizeSourceUrl(value = "") {
   try {
     const url = new URL(value);
-    if (!['https:', 'http:'].includes(url.protocol)) return null;
+    if (url.protocol !== "https:") return null;
     url.hash = "";
     [...url.searchParams.keys()].forEach((key) => {
       if (/^(utm_|fbclid|gclid)/i.test(key)) url.searchParams.delete(key);

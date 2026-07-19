@@ -3,7 +3,7 @@ import test from "node:test";
 import { AgentRequestError, fetchAgentStatus, requestAgentReply } from "./agentClient.js";
 
 const validPayload = {
-  reply: "这个变化是什么时候开始的？",
+  reply: "听到妳说累，我的耳鳍也垂下来一点了。我想靠妳近一点，看看今天发生了什么呀？",
   turnKind: "question",
   confirmedFactsCandidate: {
     rawText: "我好累",

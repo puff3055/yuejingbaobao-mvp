@@ -80,6 +80,34 @@ test("the plan rejects facts whose quoted provenance is not in the user message"
   assert.ok(validation.errors.includes("facts_provenance_unverified"));
 });
 
+test("memory drafts can only copy source-verified candidate facts", () => {
+  const valid = plan({
+    memoryDraft: {
+      shouldOffer: true,
+      summary: "下午还有会",
+      fields: [{ key: "currentConstraint", label: "现实限制", value: "下午还有会", source: "current_user_message", certainty: "explicit" }],
+    },
+  });
+  assert.deepEqual(validateAgentPlan(valid, { message: facts().rawText }), { ok: true, errors: [] });
+
+  const invented = plan({
+    memoryDraft: {
+      shouldOffer: true,
+      summary: "下午三点必须汇报",
+      fields: [{ key: "currentConstraint", label: "现实限制", value: "下午三点必须汇报", source: "current_user_message", certainty: "explicit" }],
+    },
+  });
+  const validation = validateAgentPlan(invented, { message: facts().rawText });
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.includes("memory_field_unverified"));
+});
+
+test("final response validation keeps raw user text provenance bound to this turn", () => {
+  const validation = validateAgentResponse(response(), { message: "我只是有点累" });
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.includes("facts_rawText_mismatch"));
+});
+
 test("unknown knowledge-card URLs and blocked actions fail closed", () => {
   const card = {
     title: "痛经为什么会影响活动",

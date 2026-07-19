@@ -140,7 +140,7 @@ async function agentReply(req, res) {
   const actionCandidates = cleanActionCandidates(body.actionCandidates);
   const blockedActionIds = cleanStringList(body.blockedActionIds, 12, 80).filter((id) => actionCandidates.some((item) => item.id === id));
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 14000);
+  const timer = setTimeout(() => controller.abort(), 32000);
   try {
     const result = await orchestrateAgentTurn({
       apiBase,

@@ -107,6 +107,8 @@ export async function requestAgentReply({
       actionIds: actionCandidates.map((item) => item.id),
       blockedActionIds,
       sourceUrls,
+      message: cleanMessage,
+      memories: cleanMemory(memories),
     });
     if (!validation.ok) throw new AgentRequestError("agent_invalid_schema");
     return {

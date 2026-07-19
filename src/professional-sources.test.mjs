@@ -34,6 +34,7 @@ test("PubMed discovery returns an actual PubMed link and falls back when preferr
 
 test("source normalization rejects unsafe protocols and deduplicates by canonical URL or DOI", () => {
   assert.equal(normalizeSourceUrl("javascript:alert(1)"), null);
+  assert.equal(normalizeSourceUrl("http://pubmed.ncbi.nlm.nih.gov/1/"), null);
   const sources = dedupeAndRankSources([
     { title: "A", publisherOrAuthors: "Pain", url: "https://pubmed.ncbi.nlm.nih.gov/1/?utm_source=x", doi: "10.1/A", supportingExcerpt: "short excerpt", origin: "pubmed" },
     { title: "A complete", publisherOrAuthors: "Pain", url: "https://pubmed.ncbi.nlm.nih.gov/1/", doi: "10.1/a", supportingExcerpt: "a longer and more useful abstract excerpt", origin: "pubmed" },
