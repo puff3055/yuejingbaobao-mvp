@@ -14,6 +14,10 @@ export class AgentPipelineError extends Error {
     super(code, options);
     this.name = "AgentPipelineError";
     this.code = code;
+    this.stage = options.stage || null;
+    this.validationErrors = Array.isArray(options.validationErrors)
+      ? options.validationErrors.slice(0, 12)
+      : [];
   }
 }
 
@@ -25,7 +29,6 @@ async function callStructuredModel({
   messages,
   schema,
   schemaName,
-  maxTokens,
   temperature,
   fetchImpl,
   signal,
@@ -36,7 +39,6 @@ async function callStructuredModel({
     body: JSON.stringify({
       model: apiModel,
       temperature,
-      max_tokens: maxTokens,
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -50,19 +52,21 @@ async function callStructuredModel({
     }),
     signal,
   });
-  if (!response.ok) throw new AgentPipelineError("agent_provider_error");
+  if (!response.ok) throw new AgentPipelineError("agent_provider_error", { stage: schemaName });
   let envelope;
   try {
     envelope = await response.json();
   } catch {
-    throw new AgentPipelineError("agent_invalid_json");
+    throw new AgentPipelineError("agent_invalid_json", { stage: schemaName });
   }
   const content = envelope?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || !content.trim()) throw new AgentPipelineError("agent_empty_reply");
+  if (typeof content !== "string" || !content.trim()) {
+    throw new AgentPipelineError("agent_empty_reply", { stage: schemaName });
+  }
   try {
     return JSON.parse(content);
   } catch {
-    throw new AgentPipelineError("agent_invalid_json");
+    throw new AgentPipelineError("agent_invalid_json", { stage: schemaName });
   }
 }
 
@@ -122,7 +126,6 @@ async function fastCompanionTurn({
     messages: [{ role: "user", content: message }],
     schema: AGENT_RESPONSE_SCHEMA,
     schemaName: "menstrual_baby_fast_response",
-    maxTokens: 900,
     temperature: 0.42,
     fetchImpl,
     signal,
@@ -134,7 +137,12 @@ async function fastCompanionTurn({
     message,
     firstTurn: true,
   });
-  if (!validation.ok) throw new AgentPipelineError("agent_invalid_schema");
+  if (!validation.ok) {
+    throw new AgentPipelineError("agent_invalid_schema", {
+      stage: "menstrual_baby_fast_response",
+      validationErrors: validation.errors,
+    });
+  }
   return result;
 }
 
@@ -176,13 +184,17 @@ export async function orchestrateAgentTurn({
     messages: [...history, { role: "user", content: message }],
     schema: AGENT_PLAN_SCHEMA,
     schemaName: "menstrual_baby_plan",
-    maxTokens: 1800,
     temperature: 0.12,
     fetchImpl,
     signal,
   });
   const planValidation = validateAgentPlan(plan, { message, memories, actionIds, blockedActionIds });
-  if (!planValidation.ok) throw new AgentPipelineError("agent_invalid_schema");
+  if (!planValidation.ok) {
+    throw new AgentPipelineError("agent_invalid_schema", {
+      stage: "menstrual_baby_plan",
+      validationErrors: planValidation.errors,
+    });
+  }
 
   const sources = plan.knowledgeNeed.needed
     ? await retrieveProfessionalSources({
@@ -219,7 +231,6 @@ export async function orchestrateAgentTurn({
     messages: [...history, { role: "user", content: message }],
     schema: AGENT_COMPOSER_SCHEMA,
     schemaName: "menstrual_baby_compose",
-    maxTokens: 1500,
     temperature: 0.38,
     fetchImpl,
     signal,
@@ -233,7 +244,12 @@ export async function orchestrateAgentTurn({
     message,
     firstTurn: history.length === 0,
   });
-  if (!composerValidation.ok) throw new AgentPipelineError("agent_invalid_schema");
+  if (!composerValidation.ok) {
+    throw new AgentPipelineError("agent_invalid_schema", {
+      stage: "menstrual_baby_compose",
+      validationErrors: composerValidation.errors,
+    });
+  }
 
   const result = {
     reply: composition.reply.trim(),
@@ -253,6 +269,11 @@ export async function orchestrateAgentTurn({
     message,
     firstTurn: history.length === 0,
   });
-  if (!finalValidation.ok) throw new AgentPipelineError("agent_invalid_schema");
+  if (!finalValidation.ok) {
+    throw new AgentPipelineError("agent_invalid_schema", {
+      stage: "menstrual_baby_final",
+      validationErrors: finalValidation.errors,
+    });
+  }
   return result;
 }

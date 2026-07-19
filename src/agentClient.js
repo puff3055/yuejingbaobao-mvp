@@ -1,6 +1,6 @@
 import { getAgentErrorCopy, validateAgentResponse } from "./agentProtocol.js";
 
-const DEFAULT_TIMEOUT_MS = 36000;
+const DEFAULT_TIMEOUT_MS = 95000;
 
 export class AgentRequestError extends Error {
   constructor(code, options = {}) {

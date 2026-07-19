@@ -140,7 +140,7 @@ async function agentReply(req, res) {
   const actionCandidates = cleanActionCandidates(body.actionCandidates);
   const blockedActionIds = cleanStringList(body.blockedActionIds, 12, 80).filter((id) => actionCandidates.some((item) => item.id === id));
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 32000);
+  const timer = setTimeout(() => controller.abort(), 90000);
   try {
     const result = await orchestrateAgentTurn({
       apiBase,
@@ -161,7 +161,11 @@ async function agentReply(req, res) {
     return json(res, 200, { ...result, model: apiModel });
   } catch (error) {
     const code = error.name === "AbortError" ? "agent_timeout" : error instanceof AgentPipelineError ? error.code : "agent_unavailable";
-    console.warn(`Agent request failed: ${code}`);
+    const stage = error instanceof AgentPipelineError && error.stage ? `:${error.stage}` : "";
+    const validation = error instanceof AgentPipelineError && error.validationErrors.length
+      ? `:${error.validationErrors.join(",")}`
+      : "";
+    console.warn(`Agent request failed: ${code}${stage}${validation}`);
     const status = code === "agent_provider_error" || code === "agent_invalid_json" || code === "agent_invalid_schema" || code === "agent_empty_reply" ? 502 : 503;
     return json(res, status, { error: code });
   } finally {

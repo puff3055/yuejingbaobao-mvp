@@ -57,8 +57,10 @@ function input(overrides = {}) {
 
 test("a successful turn always uses a hidden planner before the user-facing composer", async () => {
   const stages = [];
+  const requestBodies = [];
   const fetchImpl = async (_url, options) => {
     const body = JSON.parse(options.body);
+    requestBodies.push(body);
     const name = body.response_format.json_schema.name;
     stages.push(name);
     if (name === "menstrual_baby_plan") return providerResponse(plan("我好烦"));
@@ -66,6 +68,7 @@ test("a successful turn always uses a hidden planner before the user-facing comp
   };
   const result = await orchestrateAgentTurn(input({ fetchImpl }));
   assert.deepEqual(stages, ["menstrual_baby_plan", "menstrual_baby_compose"]);
+  assert.equal(requestBodies.every((body) => !Object.hasOwn(body, "max_tokens")), true);
   assert.equal(result.reply, "听到妳说烦，我身上的泡泡也乱套了！我想靠妳近一点，看看妳在烦什么呀？");
   assert.equal(result.action, null);
 });
