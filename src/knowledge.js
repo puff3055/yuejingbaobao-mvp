@@ -67,6 +67,7 @@ const PUBLIC_CLUSTER_DEFINITIONS = [
 
 export function normalizeMenstrualLanguage(value = "") {
   return String(value)
+    .replace(/你/g, "妳")
     .replace(/大姨妈|姨妈/g, "月经")
     .replace(/生理期/g, "月经期")
     .replace(/姨母/g, "月经")

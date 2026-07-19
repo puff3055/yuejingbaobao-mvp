@@ -19,7 +19,7 @@ test("explains that menstruation and the ovarian follicular phase overlap", () =
 test("does not fabricate a current phase without an authorized position", () => {
   const moment = getCycleMoment({ profile: { lifeStage: "cycle" }, cycleAnchorConfirmed: false, cycleDay: 24 });
   assert.equal(moment.available, false);
-  assert.match(moment.title, /还没有你的当前位置/);
+  assert.match(moment.title, /还没有妳的当前位置/);
   assert.equal(moment.ovarian, null);
 });
 

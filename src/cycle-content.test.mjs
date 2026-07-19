@@ -25,7 +25,7 @@ test("maps every direct physiology track to authoritative sources and boundaries
   ["NBK279054", "37666081", "PMC6710244", "PMC9098793", "PMC9580638", "PMC7663572"].forEach((locator) => {
     assert.ok(appSource.includes(locator), `missing authoritative locator: ${locator}`);
   });
-  assert.ok(appSource.includes("不是你的实时 X 光、排卵确认、内膜测量或激素检测"));
+  assert.ok(appSource.includes("妳的日期记录不能测出排卵、内膜厚度或激素水平"));
   assert.ok(appSource.includes("成品妇产科专家签字仍待完成"));
   assert.equal(appSource.includes("D17–18"), false, "fixed ovulation-day claim must not return");
 });
@@ -45,7 +45,7 @@ test("keeps cycle position, editable rhythm records and replayable onboarding in
     "记录今天的节律",
     "修改这次节律",
     "删除这条节律记录",
-    "重看找回月之种子的过程",
+    "重看月之种子来到小窝的过程",
     "退出 Onboarding，不保存本次修改",
   ].forEach((label) => assert.ok(appSource.includes(label), `missing interactive flow: ${label}`));
   assert.ok(appSource.includes("growth: Math.max"), "replaying onboarding must not reset earned growth");
@@ -57,12 +57,19 @@ test("uses the owner-selected cycle language and a custom start/end-date editor"
   assert.ok(appSource.includes("她周期全景图"));
   assert.ok(appSource.includes("同一个时间点，看见我的身体正在如何协同"));
   assert.ok(appSource.includes("我现在在生理周期的哪个位置"));
-  assert.ok(appSource.includes("由你确认，不替你猜"));
+  assert.ok(appSource.includes("由妳确认，不替妳猜"));
   assert.ok(appSource.includes("这次月经从哪天结束"));
   assert.ok(appSource.includes("还没有结束"));
   assert.ok(appSource.includes("function CycleCalendar"));
   assert.equal(appSource.includes("确认我的位置"), false);
   assert.equal(appSource.includes("典型教学坐标"), false);
+});
+
+test("keeps body and rhythm recording together in the cycle screen", () => {
+  assert.ok(appSource.includes("记录今天的节律"));
+  assert.ok(appSource.includes("点点身体位置"));
+  assert.ok(appSource.includes("onBodyRecord={openBodyMap}"));
+  assert.equal(appSource.includes("不想打字，点点身体"), false);
 });
 
 test("shows research context and personal rhythm together instead of hiding either behind tabs", () => {

@@ -44,41 +44,41 @@ export function getCycleMoment(store) {
   }
   const day = Number(store?.cycleDay);
   if (!store?.cycleAnchorConfirmed || !Number.isFinite(day) || day < 1) {
-    return unavailableMoment("还没有你的当前位置", "告诉宝宝这次月经从哪天开始，或直接填写今天是第几天，就能把你的记录放到教学图上。");
+    return unavailableMoment("还没有妳的当前位置", "告诉宝宝这次月经从哪天开始，或直接填写今天是第几天，就能把妳的记录放到教学图上。");
   }
 
   if (day <= 5) {
     return {
       available: true,
-      title: `你主动记录在 D${day}`,
+      title: `妳主动记录在 D${day}`,
       phaseLabel: "月经 / 脱落 · 同时处于卵泡期",
-      description: "教学模型里，子宫内膜正在脱落与修复；卵巢的卵泡期已经同时开始。你自己的疼痛、睡眠、精力和心情只以真实记录为准。",
+      description: "教学模型里，子宫内膜正在脱落与修复；卵巢的卵泡期已经同时开始。妳自己的疼痛、睡眠、精力和心情只以真实记录为准。",
       ovarian: "卵泡期已经开始",
       uterine: "月经 / 脱落阶段",
       next: "出血常会逐渐减少，随后教学模型进入内膜增殖阶段；排卵时点仍不能由日历确认。",
-      preparations: ["记下今天真实的疼痛、睡眠、精力或心情", "把过去确实对你有帮助的照护与用品放在手边"],
+      preparations: ["记下今天真实的疼痛、睡眠、精力或心情", "把过去确实对妳有帮助的照护与用品放在手边"],
       withinPanorama: true,
     };
   }
   if (day <= 12) {
     return {
       available: true,
-      title: `你主动记录在 D${day}`,
+      title: `妳主动记录在 D${day}`,
       phaseLabel: "卵泡期 · 内膜增殖阶段",
-      description: "教学模型里，卵泡可能继续发育，子宫内膜进入增殖阶段。这里是相对顺序，不是你的卵泡、内膜或激素实测值。",
+      description: "教学模型里，卵泡可能继续发育，子宫内膜进入增殖阶段。这里是相对顺序，不代表妳的卵泡、内膜或激素实测值。",
       ovarian: "卵泡期",
       uterine: "增殖阶段",
       next: "接下来可能接近一个会变化的排卵事件窗口；只凭日期不能确认是否或何时排卵。",
-      preparations: ["继续记录你实际观察到的分泌物或身体变化", "给接下来的安排保留可调整空间，不用服从阶段标签"],
+      preparations: ["继续记录妳实际观察到的分泌物或身体变化", "给接下来的安排保留可调整空间，不用服从阶段标签"],
       withinPanorama: true,
     };
   }
   if (day <= 16) {
     return {
       available: true,
-      title: `你主动记录在 D${day}`,
+      title: `妳主动记录在 D${day}`,
       phaseLabel: "教学模型的可变排卵窗口附近",
-      description: "这只是典型 D1–D30 坐标中的位置。日历不能证明排卵已经发生，也不能据此推算你的激素、情绪或能力。",
+      description: "这是 D1–D30 生理事件示意中的相对位置。日历不能证明排卵已经发生，也不能据此推算妳的激素、情绪或能力。",
       ovarian: "排卵事件可能发生的可变窗口",
       uterine: "增殖阶段",
       next: "如果排卵发生，之后才进入黄体期与内膜分泌阶段；具体时点和长度因人而异。",
@@ -89,12 +89,12 @@ export function getCycleMoment(store) {
   if (day <= 24) {
     return {
       available: true,
-      title: `你主动记录在 D${day}`,
+      title: `妳主动记录在 D${day}`,
       phaseLabel: "黄体期 · 内膜分泌阶段（教学模型）",
-      description: "典型模型在这里进入黄体期和内膜分泌阶段，但并不代表你一定会出现 PMS、情绪或精力变化。",
+      description: "生理事件示意在这里进入黄体期和内膜分泌阶段，但不代表妳一定会出现 PMS、情绪或精力变化。",
       ovarian: "黄体期",
       uterine: "分泌阶段",
-      next: "下一次来潮时间仍取决于你的真实周期；一个日历位置不能给出准确倒计时。",
+      next: "下一次来潮时间仍取决于妳的真实周期；一个日历位置不能给出准确倒计时。",
       preparations: ["如果过去来潮前会不适，把已验证有帮助的照护放在手边", "同时记录睡眠、压力、生病和生活安排等其他影响"],
       withinPanorama: true,
     };
@@ -102,9 +102,9 @@ export function getCycleMoment(store) {
   if (day <= 30) {
     return {
       available: true,
-      title: `你主动记录在 D${day}`,
+      title: `妳主动记录在 D${day}`,
       phaseLabel: "黄体晚段 · 内膜分泌阶段（教学模型）",
-      description: "这个位置接近 D1–D30 教学图的末段，但不能据此断言你正在 PMS 或哪一天一定来月经。",
+      description: "这个位置接近 D1–D30 示意图的末段，但不能据此断言妳正在 PMS 或哪一天一定来月经。",
       ovarian: "黄体晚段教学区间",
       uterine: "分泌阶段",
       next: "如果之后真实来潮，再把那一天确认为新的 D1；周期较长或较短都可能发生。",
@@ -114,12 +114,12 @@ export function getCycleMoment(store) {
   }
   return {
     available: true,
-    title: `你主动记录在 D${day}`,
+    title: `妳主动记录在 D${day}`,
     phaseLabel: "已经超出 D1–D30 教学画布",
-    description: "真实周期并不都在 30 天结束。这里保留你的自述天数，但不把它硬塞进一张典型图，也不据此判断原因。",
+    description: "真实周期不都在 30 天结束。这里保留妳的自述天数，不把它硬塞进一张示意图，也不据此判断原因。",
     ovarian: "仅凭日期无法判断",
     uterine: "仅凭日期无法判断",
-    next: "下一次真实来潮时再确认新的 D1；如果这是明显变化、持续让你担心或伴随严重不适，可考虑专业评估。",
+    next: "下一次真实来潮时再确认新的 D1；如果这是明显变化、持续让妳担心或伴随严重不适，可考虑专业评估。",
     preparations: ["先核对本次月经开始日期是否记录正确", "继续留下真实症状和生活背景，避免只看周期日"],
     withinPanorama: false,
   };

@@ -3,7 +3,7 @@ const RED_FLAGS = [
   { test: /(绝经后|已经绝经).{0,12}(出血|流血)|(?:出血|流血).{0,12}(绝经后|已经绝经)/, code: "postmenopausal_bleeding", title: "绝经后再次出血值得尽快评估", action: "绝经后出现新的阴道出血时，请尽快联系妇科或合适的医疗专业人员进行评估；不要只等待它自己消失或把它当作普通月经。" },
   { test: /(一(?:个)?小时|每小时).{0,8}(一片|一张|浸透)|血崩|大量出血.{0,8}(头晕|晕|心慌|喘)/, code: "bleeding", title: "这次出血情况不适合只在家观察", action: "快速大量出血并伴头晕、晕厥、心悸或呼吸不适时，请立即求助急诊或当地紧急医疗服务。" },
   { test: /(突然|从没).{0,8}(剧痛|很痛)|单侧.{0,5}(痛|疼)|发烧|持续呕吐|异常分泌物/, code: "acute", title: "这次疼痛模式值得尽快评估", action: "突然、单侧、持续加重的疼痛，或伴发热、呕吐、异常分泌物时，请尽快联系医疗机构，不要等待宝宝的普通照护流程。" },
-  { test: /(不想活|想死|自杀|伤害自己|活不下去)/, code: "crisis", title: "你现在的安全比判断周期原因更重要", action: "请马上联系你信任的人陪在身边，并联系当地急救或危机支持。宝宝不会把它简单归因于激素，也不会要求你等到记录满两个周期。" },
+  { test: /(不想活|想死|自杀|伤害自己|活不下去)/, code: "crisis", title: "妳现在的安全比判断周期原因更重要", action: "请马上联系妳信任的人陪在身边，并联系当地急救或危机支持。宝宝不会把它简单归因于激素，也不会要求妳等到记录满两个周期。" },
 ];
 
 const TAG_RULES = [
@@ -57,16 +57,16 @@ export function analyzeInput(text) {
   const time = timeMatches.filter((match) => !taskMatch || match.index <= taskMatch.index).at(-1)?.[0];
   const taskDetail = [time, task].filter(Boolean).join("的");
   const context = hasConstraint
-    ? `你不是只想知道“这是什么”，而是需要在身体不舒服时${taskDetail ? `面对${taskDetail}` : "完成今天不能取消的事"}。我会把现实限制和身体感受放在一起。`
+    ? `妳需要在身体不舒服时${taskDetail ? `面对${taskDetail}` : "完成今天不能取消的事"}。我会把现实限制和身体感受放在一起。`
     : firstPeriodIntent
-      ? "你担心的不是一个知识名词，而是第一次月经可能在学校突然发生、自己不知道该准备什么或找谁。我们先把可控的准备和可信求助放在一起。"
+      ? "妳担心第一次月经可能在学校突然发生，自己不知道该准备什么或找谁。我们先把可控的准备和可信求助放在一起。"
       : lifeReviewIntent
-        ? "你想整理的不是一张漂亮总结，而是多年身体变化、尝试和效果。宝宝会把回忆写成时间线，同时保留不确定和需要专业确认的地方。"
+        ? "妳想整理多年身体变化、尝试和效果。宝宝会把回忆写成时间线，同时保留不确定和需要专业确认的地方。"
     : knowledgeIntent
-      ? "你不是只想听一句“对”或“错”，而是想知道这条说法有什么证据、不能推出什么，以及怎样放回你的真实情况里。"
+      ? "妳想知道这条说法有什么证据、不能推出什么，以及怎样放回妳的真实情况里。"
     : stateSummary
-      ? `你已经用很少的操作告诉我：${stateSummary}。我先确认这次有没有危险变化，再和你一起选一个负担最小的下一步。`
-      : "我先把你此刻身体发生的事整理清楚，再和你一起选一个负担最小的下一步。";
+      ? `妳已经用很少的操作告诉我：${stateSummary}。我先确认这次有没有危险变化，再和妳一起选一个负担最小的下一步。`
+      : "我先把妳此刻身体发生的事整理清楚，再和妳一起选一个负担最小的下一步。";
   return {
     text: normalized,
     intent: knowledgeIntent ? "knowledge" : "care",
@@ -77,14 +77,14 @@ export function analyzeInput(text) {
     structuredState,
     context,
     followUp: hasPain
-      ? "这次和你以往相似吗？有没有突然加重、明显异常出血、头晕或发热？"
+      ? "这次和妳以往相似吗？有没有突然加重、明显异常出血、头晕或发热？"
       : firstPeriodIntent
-        ? "如果第一次月经在学校发生，你最担心的是用品、弄脏衣服，还是不知道向谁求助？"
+        ? "如果第一次月经在学校发生，妳最担心的是用品、弄脏衣服，还是不知道向谁求助？"
       : lifeReviewIntent
-        ? "你想先从哪一段变化开始：出血模式、疼痛与身体感受，还是尝试过但有效或无效的办法？"
+        ? "妳想先从哪一段变化开始：出血模式、疼痛与身体感受，还是尝试过但有效或无效的办法？"
       : knowledgeIntent
-        ? "你是在什么处境下看到这条说法的？现在最想用它解决什么问题？"
-      : "这件事从什么时候开始？和你过去的周期相比，有什么明显不同吗？",
+        ? "妳是在什么处境下看到这条说法的？现在最想用它解决什么问题？"
+      : "这件事从什么时候开始？和妳过去的周期相比，有什么明显不同吗？",
     recommendedGift: hasConstraint ? "meeting" : hasPain ? "heat" : firstPeriodIntent ? "first-period" : lifeReviewIntent ? "timeline" : knowledgeIntent ? "evidence" : "sleep",
   };
 }
@@ -138,9 +138,9 @@ export function findSimilarEpisode(episodes, analysis) {
 
 export function recallCopy(episodes, analysis = null) {
   const remembered = analysis ? findSimilarEpisode(episodes, analysis) : episodes[0];
-  if (!remembered) return "我还没有足够的真实结果，不会假装已经了解你。我们可以从今天的一次小实验开始。";
+  if (!remembered) return "我还没有足够的真实结果，会从今天的一次小实验开始慢慢了解妳。";
   const effect = remembered.effect === "helped" ? "很有帮助" : remembered.effect === "some" ? "有一点帮助" : "没有帮助或更不舒服";
   const prefix = analysis ? "上次相似处境里" : "最近一次记录里";
   const ending = remembered.effect === "none" ? "这次我不会把它当成默认答案。" : "这次仍会先确认处境，不会自动照搬。";
-  return `${prefix}，你试过「${remembered.actionTitle || (remembered.actionId === "heat" ? "温热下腹 20 分钟" : "汇报前十分钟缓冲")}」，反馈「${effect}」。${ending}`;
+  return `${prefix}，妳试过「${remembered.actionTitle || (remembered.actionId === "heat" ? "温热下腹 20 分钟" : "汇报前十分钟缓冲")}」，反馈「${effect}」。${ending}`;
 }

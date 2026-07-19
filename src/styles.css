@@ -620,3 +620,89 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
+
+/* 2026-07-19 experience reconstruction */
+.page-intro-line { margin: 1px 2px 14px; color: #7c7387; font: 11px/1.65 -apple-system, BlinkMacSystemFont, sans-serif; }
+.choice-response { display: flex; align-items: flex-start; gap: 9px; margin: -6px 0 14px; padding: 11px 12px; border-radius: 17px; color: #665875; background: linear-gradient(135deg, rgba(231,224,242,.9), rgba(255,248,239,.88)); border: 1px solid rgba(118,98,143,.18); }
+.choice-response > svg { width: 19px; height: 19px; flex: 0 0 auto; color: #ad7d8e; }
+.choice-response small, .choice-response strong { display: block; }
+.choice-response small { margin-bottom: 3px; color: #938699; font: 8px -apple-system, BlinkMacSystemFont, sans-serif; }
+.choice-response strong { font: 10.5px/1.55 -apple-system, BlinkMacSystemFont, sans-serif; }
+.menarche-selects { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 7px; margin: 14px 0 10px; }
+.menarche-selects label { display: grid; gap: 5px; color: #83788b; font: 9px -apple-system, BlinkMacSystemFont, sans-serif; }
+.menarche-selects select { width: 100%; height: 46px; padding: 0 8px; border-radius: 14px; color: #4c425a; background: rgba(255,255,255,.82); border: 1px solid var(--line); font: 11px -apple-system, BlinkMacSystemFont, sans-serif; }
+.menarche-selects select:disabled { opacity: .45; }
+.year-symbol-note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 10px; padding: 10px; border-radius: 14px; color: #766b7d; background: rgba(243,235,246,.82); font: 9px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; }
+.year-symbol-note svg { width: 15px; flex: 0 0 auto; color: #af8c61; }
+.support-responses { display: grid; gap: 7px; max-height: 218px; overflow-y: auto; margin: -9px 0 14px; padding-right: 2px; }
+.support-responses > div { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border-radius: 14px; background: rgba(255,255,255,.68); border: 1px solid var(--line); }
+.support-responses svg { width: 14px; flex: 0 0 auto; color: #816c95; }
+.support-responses p { margin: 0; }
+.support-responses strong, .support-responses span { display: block; }
+.support-responses strong { font-size: 10px; }
+.support-responses span { margin-top: 3px; color: #837a89; font: 8.5px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; }
+.empty-support { padding: 12px; border-radius: 14px; color: #908694; background: rgba(255,255,255,.5); font: 9px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; }
+.privacy-row.disabled { opacity: .86; }
+.privacy-row.disabled .switch { background: #a995b7; }
+.hatch-screen .hatch-stage { width: 290px; height: 310px; flex: 0 0 310px; position: relative; z-index: 1; }
+.hatch-screen .hatch-stage img { width: 100%; height: 100%; }
+.hatch-screen .companion-stage { position: absolute; top: 55px; opacity: 0; animation: companion-arrive 2.3s .85s cubic-bezier(.2,.8,.2,1) forwards; }
+.hatch-screen .seed-stage { animation: seed-shell 2.1s ease forwards; }
+.hatch-screen > .eyebrow, .hatch-screen > h1, .hatch-screen > p, .hatch-screen > button { position: relative; z-index: 3; }
+
+.breathing-note { margin: 7px 4px 0; text-align: center; color: #908898; font: 8.5px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+.composer-footer { justify-content: flex-end; }
+.composer-footer .voice-button { color: #6f5d82; background: #ebe3f0; box-shadow: none; }
+.composer-footer .voice-button.listening, .agent-composer .voice-button.listening { color: white; background: #9b6682; animation: pulse 1.5s ease-in-out infinite; }
+.composer-footer .open-chat-link { width: auto; height: auto; margin-right: auto; padding: 7px 4px; border-radius: 0; display: inline-flex; gap: 2px; align-items: center; color: #756385; background: transparent; box-shadow: none; font: 9px -apple-system, BlinkMacSystemFont, sans-serif; }
+.composer-footer .open-chat-link svg { width: 12px; }
+.voice-status { display: block; margin-top: 5px; color: #8d8492; font: 8px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; }
+.prepared-gift-card { margin-top: 12px; padding: 14px; border-radius: 22px; background: linear-gradient(135deg, rgba(255,248,239,.9), rgba(234,226,242,.9)); border: 1px solid rgba(129,104,151,.18); box-shadow: 0 12px 28px rgba(74,59,91,.07); }
+.prepared-gift-heading { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.prepared-gift-heading h3 { margin: 2px 0 4px; font-size: 15px; }
+.prepared-gift-heading span { color: #8d8290; font: 8.5px -apple-system, BlinkMacSystemFont, sans-serif; }
+.prepared-gift-heading > svg { width: 30px; height: 30px; color: #a98358; }
+.prepared-gift-card > p { color: #746c78; font-size: 10px; line-height: 1.6; }
+.prepared-gift-card .secondary-button { min-height: 40px; padding: 8px 12px; font-size: 10px; }
+.gift-detail-line { display: grid; gap: 3px; margin: 9px 0; padding: 9px 10px; border-radius: 13px; background: rgba(255,255,255,.6); }
+.gift-detail-line strong { font-size: 9px; }.gift-detail-line span { color: #807784; font: 9px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; }
+.prepared-gift-card .boundary-note { margin: 8px 0; }
+.home-birthday-card { display: grid; grid-template-columns: 112px 1fr; gap: 11px; margin-top: 12px; padding: 10px; border-radius: 22px; background: rgba(255,255,255,.74); border: 1px solid var(--line); overflow: hidden; }
+.home-birthday-card img { width: 112px; height: 128px; border-radius: 17px; object-fit: cover; object-position: 50% 48%; }
+.home-birthday-card h3 { margin: 2px 0 4px; font-size: 13px; }.home-birthday-card p:not(.eyebrow) { margin: 0; color: #7d7481; font: 9px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; }
+.home-birthday-card button { margin-top: 7px; display: inline-flex; align-items: center; color: #735e82; background: transparent; font-size: 9px; }
+.care-history-link { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-top: 12px; padding: 13px; border-radius: 19px; background: rgba(255,255,255,.66); border: 1px solid var(--line); }
+.care-history-link h3 { margin: 2px 0 3px; font-size: 13px; }.care-history-link p:not(.eyebrow) { margin: 0; color: #8b8290; font: 8px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; }
+.care-history-link button { display: inline-flex; align-items: center; flex: 0 0 auto; color: #725e82; background: transparent; font-size: 9px; }
+
+.agent-composer-row { grid-template-columns: 1fr 42px 44px; }
+.agent-composer .voice-button { width: 42px; height: 42px; color: #6c5b7f; background: #e9e1ef; box-shadow: none; }
+.agent-engine-state.device { color: #6e6380; background: #ece6f2; }
+
+.cycle-record-buttons { display: grid; gap: 6px; }
+.cycle-record-buttons > button { min-height: 38px; display: flex; align-items: center; gap: 5px; padding: 0 10px; border-radius: 13px; color: white; background: linear-gradient(135deg, #806d96, #5f4d72); font: 9px -apple-system, BlinkMacSystemFont, sans-serif; }
+.cycle-record-buttons > button:last-child { color: #6c5a7c; background: #ebe4f0; }
+.cycle-record-buttons svg { width: 14px; }
+.cycle-position-actions { grid-template-columns: auto 1fr; }
+
+.birthday-party-hero { overflow: hidden; border-radius: 25px; margin-bottom: 4px; color: #51465f; background: rgba(255,255,255,.75); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.birthday-party-hero img { width: 100%; height: 205px; display: block; object-fit: cover; object-position: 50% 55%; }
+.birthday-party-hero > div { padding: 14px 16px 16px; text-align: center; }
+.birthday-party-hero h2 { margin: 3px 0 5px; font-size: 19px; font-weight: 500; }.birthday-party-hero p:last-child { margin: 0; color: #7d7382; font-size: 10px; line-height: 1.55; }
+.gift-effect-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 0 0 10px; padding: 4px; border-radius: 15px; background: rgba(231,225,236,.75); }
+.gift-effect-tabs button { min-height: 34px; border-radius: 11px; color: #796e80; background: transparent; font-size: 9px; }.gift-effect-tabs button.active { color: white; background: #77638a; }
+.gift-none { border-color: rgba(147,106,116,.27); background: linear-gradient(135deg, rgba(255,255,255,.76), rgba(247,234,232,.76)); }
+.community-feed { display: grid; gap: 9px; }.community-intro { display: flex; gap: 11px; padding: 14px; border-radius: 21px; background: linear-gradient(135deg, #eee7f3, #fff8ef); border: 1px solid var(--line); }.community-intro > svg { width: 29px; flex: 0 0 auto; color: #79658c; }.community-intro h2 { margin: 2px 0 4px; font-size: 16px; }.community-intro p:last-child { margin: 0; color: #7e7483; font-size: 9px; line-height: 1.5; }
+.community-post { display: flex; gap: 10px; padding: 12px; border-radius: 20px; background: rgba(255,255,255,.72); border: 1px solid var(--line); }.community-post > div:last-child { min-width: 0; flex: 1; }.community-post header { display: flex; justify-content: space-between; gap: 8px; }.community-post header strong { font-size: 11px; }.community-post header small { color: #948a98; font: 8px -apple-system, BlinkMacSystemFont, sans-serif; }.community-post p { margin: 6px 0 9px; color: #746c79; font-size: 10px; line-height: 1.55; }.community-post-actions { display: flex; flex-wrap: wrap; gap: 5px; }.community-post-actions button { min-height: 31px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 10px; color: #735f82; background: #ebe4f0; font-size: 8.5px; }.community-post-actions button.connected { color: #6b7968; background: #e4eee3; }
+
+.my-baby-summary { display: grid; grid-template-columns: 112px 1fr; gap: 12px; padding: 12px; margin-bottom: 12px; border-radius: 24px; background: linear-gradient(135deg, rgba(255,255,255,.78), rgba(238,230,245,.84)); border: 1px solid var(--line); box-shadow: 0 13px 30px rgba(73,58,91,.08); }
+.my-baby-summary > img { width: 112px; height: 142px; border-radius: 20px; object-fit: cover; object-position: 50% 58%; }
+.my-baby-summary h1 { margin: 2px 0 5px; font-size: 23px; font-weight: 500; }.my-baby-summary > div > p:last-child { margin: 0; color: #776e7c; font-size: 9.5px; line-height: 1.55; }
+.baby-summary-stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }.baby-summary-stats span { padding: 8px 4px; border-radius: 12px; text-align: center; background: rgba(255,255,255,.62); }.baby-summary-stats strong, .baby-summary-stats small { display: block; }.baby-summary-stats strong { font-size: 17px; }.baby-summary-stats small { margin-top: 2px; color: #8f8492; font: 7px -apple-system, BlinkMacSystemFont, sans-serif; }
+.lifecycle-intro { padding: 13px; border-radius: 20px; background: linear-gradient(135deg, #eee7f3, #fff7ee); }.lifecycle-intro h2 { margin: 3px 0 5px; font-size: 16px; }.lifecycle-intro > p:last-child { margin: 0; color: #7c7281; font-size: 9px; line-height: 1.55; }
+.lifecycle-card.current { grid-template-columns: 128px 1fr; padding: 12px; }.lifecycle-card.current .lifecycle-visual { width: 128px; height: 150px; }.lifecycle-card:not(.current) { opacity: .82; grid-template-columns: 76px 1fr; }.lifecycle-card:not(.current) .lifecycle-visual { width: 76px; height: 92px; border-radius: 17px; }
+.current-stage-data { display: grid; gap: 5px; margin-top: 8px; }.current-stage-data span { padding: 6px 8px; border-radius: 10px; color: #74697a; background: rgba(236,230,241,.78); font: 8px -apple-system, BlinkMacSystemFont, sans-serif; }.current-stage-data strong { color: #5d4d6b; font-size: 11px; }
+.episode-story dl { display: grid; grid-template-columns: 30px 1fr; gap: 4px 6px; margin: 7px 0; }.episode-story dt { color: #9a8f9c; font: 8px -apple-system, BlinkMacSystemFont, sans-serif; }.episode-story dd { margin: 0; color: #6e6673; font: 9px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; }
+
+@keyframes seed-shell { 0%,35% { opacity: 1; transform: scale(.96); filter: brightness(1); } 70% { opacity: 1; transform: scale(1.04); filter: brightness(1.35); } 100% { opacity: 0; transform: scale(1.11); filter: brightness(1.8); } }
+@keyframes companion-arrive { 0% { opacity: 0; transform: scale(.83); filter: brightness(1.6); } 45% { opacity: .85; } 100% { opacity: 1; transform: scale(1); filter: brightness(1); } }
