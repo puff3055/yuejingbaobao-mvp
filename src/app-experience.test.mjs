@@ -5,22 +5,36 @@ import test from "node:test";
 const appSource = await readFile(new URL("./App.jsx", import.meta.url), "utf8");
 const agentSource = await readFile(new URL("./agentClient.js", import.meta.url), "utf8");
 const serverSource = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
-const promptSource = await readFile(new URL("../prompts/menstrual-baby-system-v1.md", import.meta.url), "utf8");
+const promptSource = await readFile(new URL("../prompts/menstrual-baby-system-v2.md", import.meta.url), "utf8");
 const styleSource = await readFile(new URL("./styles.css", import.meta.url), "utf8");
 
 test("keeps free text and natural-language Agent replies in the core loop", () => {
-  assert.ok(appSource.includes("直接打字或说给月经宝宝听"));
+  assert.ok(appSource.includes("月经宝宝正趴在这里听妳说"));
   assert.ok(appSource.includes("continueConversation"));
-  assert.ok(appSource.includes("联网回应 · 资料来源可查看"));
-  assert.ok(appSource.includes("设备内回应 · 当前消息不会上传"));
+  assert.ok(appSource.includes("联网 Agent 已接通"));
+  assert.ok(appSource.includes("本轮没有生成回复"));
+  assert.ok(appSource.includes("系统状态 · 不是宝宝回复"));
   assert.ok(agentSource.includes('fetch("/api/agent"'));
-  assert.ok(agentSource.includes("if (!context.allowRemote) return fallback"));
+  assert.ok(agentSource.includes("throw new AgentRequestError(\"agent_not_authorized\")"));
+  assert.equal(agentSource.includes("return fallback"), false);
+  assert.equal(agentSource.includes("设备里先接住"), false);
+  assert.equal(appSource.includes("设备内回应"), false);
   assert.ok(serverSource.includes('req.url === "/api/agent"'));
-  assert.ok(serverSource.includes("systemPrompt"));
-  assert.ok(promptSource.includes("你不是医生、诊断工具、心理疗愈师、客服或百科问答机器人"));
-  assert.ok(promptSource.includes("每一轮只做一件事"));
+  assert.ok(serverSource.includes('response_format: {'));
+  assert.ok(serverSource.includes('strict: true'));
+  assert.ok(promptSource.includes("用户身体潮汐外化出来的“月经宝宝”"));
+  assert.ok(promptSource.includes("每轮只完成一个任务"));
   assert.equal(appSource.includes("宝宝目前理解到"), false);
   assert.equal(appSource.includes("我和妳一起理清"), false);
+});
+
+test("renders exactly one active baby at the composer instead of reply avatars", () => {
+  assert.ok(appSource.includes("<ComposerCompanion"));
+  assert.ok(appSource.includes("composer-companion"));
+  assert.equal(appSource.includes("mini-baby"), false);
+  assert.ok(styleSource.includes(".composer-companion"));
+  assert.ok(styleSource.includes("top: -16px"));
+  assert.ok(styleSource.includes("interaction-offline"));
 });
 
 test("saves feedback plainly and makes later sharing optional", () => {
@@ -29,6 +43,15 @@ test("saves feedback plainly and makes later sharing optional", () => {
   });
   assert.equal(appSource.includes("把结果轻轻抱住"), false);
   assert.equal(appSource.includes("收进贝壳"), false);
+});
+
+test("lets the user correct a saved record and feeds the corrected outcome back into memory", () => {
+  assert.ok(appSource.includes("修改这一条照护记录"));
+  assert.ok(appSource.includes("user_corrected_after_save"));
+  assert.ok(appSource.includes("user_corrected_feedback"));
+  assert.ok(appSource.includes("保存妳的纠正"));
+  assert.ok(appSource.includes("旧的内容已经被替换"));
+  assert.ok(appSource.includes("episode.effect === filter"));
 });
 
 test("uses a cautious five-in five-out breathing cue rather than promising a treatment effect", () => {

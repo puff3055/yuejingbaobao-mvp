@@ -1,88 +1,109 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { localReply, requestAgentReply } from "./agentClient.js";
-import { analyzeInput } from "./agent.js";
+import { AgentRequestError, fetchAgentStatus, requestAgentReply } from "./agentClient.js";
 
-const analysis = {
-  tags: ["下腹疼痛", "现实任务不能取消"],
-  context: "妳需要在身体不舒服时面对下午的会议。",
-  followUp: "这次和以往相似吗？",
+const validPayload = {
+  reply: "这个变化是什么时候开始的？",
+  turnKind: "question",
+  confirmedFactsCandidate: {
+    rawText: "我好累",
+    cycleContext: null,
+    symptoms: ["疲惫"],
+    bodyLocations: [],
+    onset: null,
+    functionalImpact: null,
+    differenceFromUsual: null,
+    currentConstraint: null,
+    actionsTried: [],
+    outcomes: [],
+    uncertainty: ["是否与月经有关尚不明确"],
+  },
+  missingField: "onset",
+  action: null,
+  memoryDraft: { shouldOffer: false, summary: null, fields: [] },
+  evidenceIds: [],
+  risk: { level: "none", reason: null },
+  visualState: { interaction: "responding", body: "calm", basis: [] },
+  evidence: [],
+  model: "step-3.5-flash",
 };
 
-const bannedTemplate = /我听见了|我理解妳|我先记下了|我抓到.{0,6}重点|先不管记录|——小潮/;
+async function withMockFetch(mock, run) {
+  const original = globalThis.fetch;
+  globalThis.fetch = mock;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+  }
+}
 
-test("first pain reply cares about the real constraint and asks only one useful question", () => {
-  const realAnalysis = analyzeInput("我现在小腹特别痛，下午还有会。");
-  const reply = localReply({ analysis: realAnalysis, message: "我现在小腹特别痛，下午还有会。" });
-  assert.match(reply, /偏偏下午还有会/);
-  assert.match(reply, /走动、坐着或集中注意/);
-  assert.ok(realAnalysis.tags.includes("现实任务不能取消"));
-  assert.equal(realAnalysis.taskDetail, "下午的会议");
-  assert.equal((reply.match(/？/g) || []).length, 1);
-  assert.doesNotMatch(reply, bannedTemplate);
+function request(overrides = {}) {
+  return requestAgentReply({
+    message: "我好累",
+    history: [],
+    memories: [],
+    actionCandidates: [],
+    blockedActionIds: [],
+    context: { allowRemote: true },
+    ...overrides,
+  });
+}
+
+test("an unauthorized message never reaches fetch and never gets a local reply", async () => {
+  let calls = 0;
+  await withMockFetch(async () => { calls += 1; throw new Error("must not fetch"); }, async () => {
+    await assert.rejects(request({ context: { allowRemote: false } }), (error) => error instanceof AgentRequestError && error.code === "agent_not_authorized");
+  });
+  assert.equal(calls, 0);
 });
 
-test("a follow-up question never reveals an action card before the user answers", async () => {
-  const realAnalysis = analyzeInput("我现在小腹特别痛，下午还有会。\n用户补充：主要很难集中");
-  const result = await requestAgentReply({
-    analysis: realAnalysis,
-    message: "主要很难集中",
-    history: [{ role: "user", content: "我现在小腹特别痛，下午还有会。" }, { role: "assistant", content: "这次的痛会影响妳集中注意吗？" }],
-    context: { allowRemote: false },
-  });
-  assert.equal(result.kind, "question");
-  assert.deepEqual(result.quickReplies, ["和以前差不多", "明显不一样"]);
-  assert.match(result.reply, /熟悉的那种痛/);
+test("one valid strict response is returned without a silent retry", async () => {
+  let calls = 0;
+  const result = await withMockFetch(async () => {
+    calls += 1;
+    return new Response(JSON.stringify(validPayload), { status: 200, headers: { "Content-Type": "application/json" } });
+  }, () => request());
+  assert.equal(calls, 1);
+  assert.equal(result.reply, validPayload.reply);
+  assert.equal(result.turnKind, "question");
 });
 
-test("an ordinary action appears only after function impact and change are answered", async () => {
-  const realAnalysis = analyzeInput("我现在小腹特别痛，下午还有会。\n用户补充：主要很难集中\n用户补充：和以前差不多");
-  const result = await requestAgentReply({
-    analysis: realAnalysis,
-    message: "和以前差不多",
-    history: [
-      { role: "user", content: "我现在小腹特别痛，下午还有会。" },
-      { role: "assistant", content: "这次的痛会影响妳集中注意吗？" },
-      { role: "user", content: "主要很难集中" },
-      { role: "assistant", content: "这次和妳熟悉的痛相似吗？" },
-    ],
-    context: { allowRemote: false },
+test("invalid JSON is rejected and never converted into a baby reply", async () => {
+  await withMockFetch(async () => new Response("not-json", { status: 200 }), async () => {
+    await assert.rejects(request(), (error) => error.code === "agent_invalid_json" && !Object.hasOwn(error, "reply"));
   });
-  assert.equal(result.kind, "action");
-  assert.equal(result.quickReplies.length, 0);
 });
 
-test("follow-up does not repeat a summary or ask the same safety bundle again", () => {
-  const reply = localReply({
-    analysis,
-    message: "和以前差不多，没有头晕、发热或异常出血，但站着讲会更难受。",
-    history: [{ role: "user", content: "小腹疼" }, { role: "assistant", content: "这次的痛会影响走动吗？" }],
+test("an invalid schema is rejected whole instead of displaying partial text", async () => {
+  await withMockFetch(async () => new Response(JSON.stringify({ ...validPayload, reply: "", extra: "unsafe" }), { status: 200 }), async () => {
+    await assert.rejects(request(), (error) => error.code === "agent_invalid_schema");
   });
-  assert.match(reply, /熟悉的疼法/);
-  assert.match(reply, /合不合此刻/);
-  assert.doesNotMatch(reply, /头晕、发热、异常出血/);
-  assert.doesNotMatch(reply, bannedTemplate);
 });
 
-test("a failed remembered action is actively kept out of the next default", () => {
-  const reply = localReply({
-    analysis,
-    message: "和以前差不多",
-    history: [{ role: "user", content: "小腹疼" }],
-    memory: { actionTitle: "温热下腹", effect: "none" },
+test("provider errors remain system errors and are not retried", async () => {
+  let calls = 0;
+  await withMockFetch(async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ error: "agent_provider_error" }), { status: 502, headers: { "Content-Type": "application/json" } });
+  }, async () => {
+    await assert.rejects(request(), (error) => error.code === "agent_provider_error");
   });
-  assert.match(reply, /不会再把它放在前面/);
-  assert.doesNotMatch(reply, /再试一次/);
+  assert.equal(calls, 1);
 });
 
-test("a helpful remembered action returns as a choice, not a command", () => {
-  const reply = localReply({
-    analysis,
-    message: "和以前差不多",
-    history: [{ role: "user", content: "小腹疼" }],
-    memory: { actionTitle: "温热下腹", effect: "helped" },
+test("timeouts fail explicitly without an automatic retry", async () => {
+  let calls = 0;
+  await withMockFetch((_url, options) => new Promise((_resolve, reject) => {
+    calls += 1;
+    options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+  }), async () => {
+    await assert.rejects(request({ timeoutMs: 5 }), (error) => error.code === "agent_timeout");
   });
-  assert.match(reply, /确实让妳轻了一点/);
-  assert.match(reply, /今天还方便用它吗/);
-  assert.doesNotMatch(reply, /妳应该|妳必须/);
+  assert.equal(calls, 1);
+});
+
+test("status preflight distinguishes configured from unconfigured", async () => {
+  const status = await withMockFetch(async () => new Response(JSON.stringify({ configured: true }), { status: 200, headers: { "Content-Type": "application/json" } }), () => fetchAgentStatus());
+  assert.deepEqual(status, { configured: true });
 });
