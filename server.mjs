@@ -3,15 +3,18 @@ import { readFile, stat } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { selectEvidencePackets } from "./src/agentKnowledge.js";
-import { AGENT_RESPONSE_SCHEMA, validateAgentResponse } from "./src/agentProtocol.js";
+import { orchestrateAgentTurn, AgentPipelineError } from "./src/agentOrchestrator.js";
+import { analyzeInput } from "./src/agent.js";
+import { CARE_GIFTS } from "./src/data.js";
+import { normalizeSourceUrl } from "./src/professionalSources.js";
 
 const root = fileURLToPath(new URL("./dist", import.meta.url));
-const systemPrompt = readFileSync(fileURLToPath(new URL("./prompts/menstrual-baby-system-v2.md", import.meta.url)), "utf8");
+const systemPrompt = readFileSync(fileURLToPath(new URL("./prompts/menstrual-baby-system-v3.md", import.meta.url)), "utf8");
 const port = Number(process.env.PORT || 4173);
 const apiBase = (process.env.AGENT_API_BASE_URL || "").replace(/\/$/, "");
 const apiModel = process.env.AGENT_API_MODEL || "";
 const apiKey = process.env.AGENT_API_KEY || "";
+const searchEndpoint = process.env.AGENT_SEARCH_URL || (apiBase ? `${apiBase}/search` : "");
 const configured = Boolean(apiBase && apiModel && apiKey);
 let knowledgeCache = null;
 
@@ -83,20 +86,20 @@ function cleanMemory(memory) {
 }
 
 function cleanActionCandidates(candidates) {
-  if (!Array.isArray(candidates)) return [];
-  return candidates.slice(0, 12).flatMap((item) => {
-    const id = cleanText(item?.id, 80);
-    const title = cleanText(item?.title, 100);
-    if (!id || !title) return [];
-    return [{
-      id,
-      title,
-      why: cleanText(item?.why || item?.kind, 240),
-      how: cleanText(item?.how, 320),
-      stopWhen: cleanText(item?.stopWhen || item?.caution, 240),
-      evidenceIds: cleanStringList(item?.evidenceIds, 6, 96),
-    }];
-  });
+  const requested = new Set(Array.isArray(candidates) ? candidates.map((item) => cleanText(item?.id, 80)).filter(Boolean) : []);
+  return CARE_GIFTS.filter((item) => requested.has(item.id)).slice(0, 12).map((item) => ({
+    id: item.id,
+    title: item.title,
+    why: item.kind,
+    how: item.how,
+    stopWhen: item.caution,
+    sources: item.sourceUrl && normalizeSourceUrl(item.sourceUrl) ? [{
+      title: item.source,
+      publisherOrAuthors: "",
+      publishedAt: null,
+      url: normalizeSourceUrl(item.sourceUrl),
+    }] : [],
+  }));
 }
 
 function cleanContext(context) {
@@ -106,6 +109,7 @@ function cleanContext(context) {
     cycleDay: Number.isInteger(context?.cycleDay) ? context.cycleDay : null,
     cycleAnchorConfirmed: context?.cycleAnchorConfirmed === true,
     needs: cleanStringList(context?.needs, 8, 80),
+    fastCompanionAllowed: context?.fastCompanionAllowed === true,
   };
 }
 
@@ -130,73 +134,36 @@ async function agentReply(req, res) {
   }
   const message = typeof body.message === "string" ? body.message.trim().slice(0, 2400) : "";
   if (!message) return json(res, 400, { error: "message_required" });
+  if (analyzeInput(message).redFlag) return json(res, 422, { error: "safety_intercepted" });
   const context = cleanContext(body.context);
   const memory = cleanMemory(body.memory);
   const actionCandidates = cleanActionCandidates(body.actionCandidates);
   const blockedActionIds = cleanStringList(body.blockedActionIds, 12, 80).filter((id) => actionCandidates.some((item) => item.id === id));
-  const evidence = selectEvidencePackets(await loadKnowledgeClaims(), message);
-  const allowedEvidenceIds = evidence.map((item) => item.claimId);
-  const system = `${systemPrompt}\n\n## 本轮产品上下文\n${JSON.stringify(context)}\n\n## 已确认的个人记忆（可为空）\n${memory.length ? JSON.stringify(memory) : "[]"}\n\n## 本轮可选行动白名单\n${actionCandidates.length ? JSON.stringify(actionCandidates) : "[]。没有白名单行动时，action 必须是 null。"}\n\n## 因本人负向结果被阻止的行动\n${JSON.stringify(blockedActionIds)}\n\n## 本轮专业资料包\n${evidence.length ? JSON.stringify(evidence) : "[]。没有资料时，不得凭模型记忆补充医学主张或来源。"}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 22000);
+  const timer = setTimeout(() => controller.abort(), 14000);
   try {
-    const response = await fetch(`${apiBase}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: apiModel,
-        temperature: 0.25,
-        max_tokens: 1800,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "menstrual_baby_turn",
-            description: "月经宝宝单轮联网回应与候选记录",
-            strict: true,
-            schema: AGENT_RESPONSE_SCHEMA,
-          },
-        },
-        messages: [{ role: "system", content: system }, ...cleanHistory(body.history), { role: "user", content: message }],
-      }),
+    const result = await orchestrateAgentTurn({
+      apiBase,
+      apiModel,
+      apiKey,
+      searchEndpoint,
+      systemPrompt,
+      message,
+      history: cleanHistory(body.history),
+      context,
+      memories: memory,
+      actionCandidates,
+      blockedActionIds,
+      knowledgeRecords: await loadKnowledgeClaims(),
+      fetchImpl: fetch,
       signal: controller.signal,
     });
-    if (!response.ok) {
-      console.warn(`Agent provider error: ${response.status}`);
-      return json(res, 502, { error: "agent_provider_error" });
-    }
-    let payload;
-    try {
-      payload = await response.json();
-    } catch {
-      console.warn("Agent provider returned invalid JSON envelope");
-      return json(res, 502, { error: "agent_invalid_json" });
-    }
-    const reply = payload?.choices?.[0]?.message?.content;
-    if (typeof reply !== "string" || !reply.trim()) {
-      console.warn("Agent provider returned an empty reply");
-      return json(res, 502, { error: "agent_empty_reply" });
-    }
-    let structured;
-    try {
-      structured = JSON.parse(reply);
-    } catch {
-      console.warn("Agent response was not valid structured JSON");
-      return json(res, 502, { error: "agent_invalid_json" });
-    }
-    const validation = validateAgentResponse(structured, {
-      evidenceIds: allowedEvidenceIds,
-      actionIds: actionCandidates.map((item) => item.id),
-      blockedActionIds,
-    });
-    if (!validation.ok) {
-      console.warn(`Agent response failed schema validation: ${validation.errors.join(",")}`);
-      return json(res, 502, { error: "agent_invalid_schema" });
-    }
-    const citedEvidence = evidence.filter((item) => structured.evidenceIds.includes(item.claimId) || structured.action?.evidenceIds?.includes(item.claimId));
-    return json(res, 200, { ...structured, reply: structured.reply.trim(), model: apiModel, evidence: citedEvidence });
+    return json(res, 200, { ...result, model: apiModel });
   } catch (error) {
-    console.warn(`Agent request failed: ${error.name || "unknown"}`);
-    return json(res, error.name === "AbortError" ? 504 : 503, { error: error.name === "AbortError" ? "agent_timeout" : "agent_unavailable" });
+    const code = error.name === "AbortError" ? "agent_timeout" : error instanceof AgentPipelineError ? error.code : "agent_unavailable";
+    console.warn(`Agent request failed: ${code}`);
+    const status = code === "agent_provider_error" || code === "agent_invalid_json" || code === "agent_invalid_schema" || code === "agent_empty_reply" ? 502 : 503;
+    return json(res, status, { error: code });
   } finally {
     clearTimeout(timer);
   }

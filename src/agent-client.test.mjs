@@ -17,14 +17,14 @@ const validPayload = {
     actionsTried: [],
     outcomes: [],
     uncertainty: ["是否与月经有关尚不明确"],
+    fieldProvenance: [{ key: "symptoms", source: "current_user_message", sourceRef: "current", quote: "累", certainty: "explicit" }],
   },
   missingField: "onset",
   action: null,
   memoryDraft: { shouldOffer: false, summary: null, fields: [] },
-  evidenceIds: [],
+  knowledgeCard: null,
   risk: { level: "none", reason: null },
   visualState: { interaction: "responding", body: "calm", basis: [] },
-  evidence: [],
   model: "step-3.5-flash",
 };
 

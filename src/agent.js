@@ -143,15 +143,19 @@ export function applyEpisodeOutcome(store, episode, giftId, analysis) {
   };
 }
 
-export function findSimilarEpisode(episodes, analysis) {
-  if (!analysis) return episodes[0] || null;
+export function findSimilarEpisodes(episodes, analysis, limit = 3) {
+  if (!analysis) return episodes.slice(0, limit);
   const currentTags = new Set(analysis.tags.filter((tag) => tag !== "需要进一步了解" && !tag.startsWith("经期 D")));
   const ranked = episodes.map((episode, index) => {
     const commonTags = (episode.tags || []).filter((tag) => currentTags.has(tag)).length;
     const sameTask = analysis.taskDetail && episode.taskDetail && analysis.taskDetail.split("的").at(-1) === episode.taskDetail.split("的").at(-1);
     return { episode, score: commonTags * 2 + (sameTask ? 2 : 0) - index * 0.01 };
   }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
-  return ranked[0]?.episode || null;
+  return ranked.slice(0, limit).map((item) => item.episode);
+}
+
+export function findSimilarEpisode(episodes, analysis) {
+  return findSimilarEpisodes(episodes, analysis, 1)[0] || null;
 }
 
 export function recallCopy(episodes, analysis = null) {

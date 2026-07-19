@@ -1,3 +1,10 @@
+import {
+  dedupeAndRankSources,
+  fetchOfficialSearchSources,
+  fetchPubMedSources,
+  normalizeSourceUrl,
+} from "./professionalSources.js";
+
 const TOPIC_RULES = [
   { test: /痛经|小腹|下腹|腹痛|疼痛|痉挛/, terms: [/疼痛|痛经|功能影响|日常活动|污名|症状正常化/] },
   { test: /经量|大量出血|出血多|漏血|浸透|血块/, terms: [/经量|大量月经出血|HMB|出血|贫血|浸透/] },
@@ -19,17 +26,19 @@ function isSafeBackgroundRecord(record) {
     && ["background_ready", "evidence_background"].includes(record?.app_publication_status)
     && Number(record?.located_source_count || 0) > 0
     && Array.isArray(record?.source_details)
-    && record.source_details.some((source) => source?.url && source?.locator_type && source.locator_type !== "not_available");
+    && record.source_details.some((source) => normalizeSourceUrl(source?.url) && source?.locator_type && source.locator_type !== "not_available");
 }
 
 function compactSource(source) {
+  const url = normalizeSourceUrl(source?.url);
+  if (!url) return null;
   return {
-    id: source.source_id,
+    sourceId: source.source_id,
     title: source.source_title,
-    organization: source.organization_or_authors,
-    year: source.publication_year,
-    type: source.source_type,
-    url: source.url,
+    publisherOrAuthors: source.organization_or_authors,
+    publishedAt: source.publication_year ? String(source.publication_year) : null,
+    sourceType: source.source_type,
+    url,
     locator: [source.locator_type, source.locator_value].filter(Boolean).join(" · "),
     verification: source.verification_status,
   };
@@ -39,8 +48,8 @@ export function isKnowledgeIntent(message = "") {
   return KNOWLEDGE_INTENT.test(message);
 }
 
-export function selectEvidencePackets(records = [], message = "", limit = 2) {
-  if (!isKnowledgeIntent(message)) return [];
+export function selectEvidencePackets(records = [], message = "", limit = 2, { force = false } = {}) {
+  if (!force && !isKnowledgeIntent(message)) return [];
   const matchedRules = TOPIC_RULES.filter((rule) => rule.test.test(message));
   if (!matchedRules.length) return [];
   const terms = matchedRules.flatMap((rule) => rule.terms);
@@ -66,9 +75,53 @@ export function selectEvidencePackets(records = [], message = "", limit = 2) {
       publicationBoundary: record.publication_boundary,
       clinicalReview: record.clinical_product_review,
       sources: record.source_details
-        .filter((source) => source?.url && source?.locator_type && source.locator_type !== "not_available")
-        .slice(0, 2)
-        .map(compactSource),
+        .filter((source) => source?.locator_type && source.locator_type !== "not_available")
+        .map(compactSource)
+        .filter(Boolean)
+        .slice(0, 3),
     }));
 }
 
+export function localPacketsToSources(packets = []) {
+  return packets.flatMap((packet) => packet.sources.map((source) => ({
+    title: source.title,
+    publisherOrAuthors: source.publisherOrAuthors,
+    publishedAt: source.publishedAt,
+    url: source.url,
+    doi: source.url.includes("doi.org/") ? source.url.split("doi.org/")[1] : null,
+    journal: source.publisherOrAuthors,
+    supportingExcerpt: packet.claim,
+    populationOrContext: packet.appliesTo,
+    limitations: [packet.cannotConclude, packet.limitations, packet.publicationBoundary].filter(Boolean).join(" "),
+    sourceType: source.sourceType,
+    origin: "local_release",
+  })));
+}
+
+export async function retrieveProfessionalSources({
+  records = [],
+  message = "",
+  query = "",
+  officialQuery = "",
+  category = "basic",
+  apiKey = "",
+  searchEndpoint,
+  fetchImpl = fetch,
+  signal,
+  limit = 8,
+} = {}) {
+  const local = localPacketsToSources(selectEvidencePackets(records, message, 3, { force: true }));
+  const pubmedPromise = fetchPubMedSources(query, { fetchImpl, signal, limit: 5 }).catch(() => []);
+  const officialPromise = ["safety", "action_effectiveness", "basic"].includes(category)
+    ? fetchOfficialSearchSources(officialQuery || query, { apiKey, fetchImpl, signal, limit: 4, endpoint: searchEndpoint }).catch(() => [])
+    : Promise.resolve([]);
+  const [pubmed, official] = await Promise.all([pubmedPromise, officialPromise]);
+  const sourcePriority = ["safety", "action_effectiveness", "basic"].includes(category)
+    ? { official: 0, local: 1, pubmed: 2 }
+    : { local: 0, pubmed: 1, official: 2 };
+  return dedupeAndRankSources([
+    ...official.map((source) => ({ ...source, priority: sourcePriority.official })),
+    ...local.map((source) => ({ ...source, priority: sourcePriority.local })),
+    ...pubmed.map((source) => ({ ...source, priority: sourcePriority.pubmed })),
+  ], limit);
+}

@@ -49,7 +49,7 @@ import {
   SUPPORT_EXPLANATIONS,
   SUPPORT_NEEDS,
 } from "./data.js";
-import { analyzeInput, applyEpisodeOutcome, findSimilarEpisode } from "./agent.js";
+import { analyzeInput, applyEpisodeOutcome, findSimilarEpisodes } from "./agent.js";
 import { AgentRequestError, fetchAgentStatus, requestAgentReply } from "./agentClient.js";
 import { getAgentErrorCopy } from "./agentProtocol.js";
 import { deriveCycleDayFromStart, getCycleMoment, localDateValue, upsertRhythmLog } from "./cycle.js";
@@ -653,19 +653,11 @@ const AGENT_ACTION_IDS = new Set(["heat", "meeting", "travel", "sleep", "evidenc
 function getAgentActionCandidates() {
   return CARE_GIFTS.filter((item) => AGENT_ACTION_IDS.has(item.id)).map((item) => ({
     id: item.id,
-    title: item.title,
-    why: item.kind,
-    how: item.how,
-    stopWhen: item.caution,
-    evidenceIds: [],
   }));
 }
 
 function getRelevantAgentMemories(episodes, analysis) {
-  const similar = findSimilarEpisode(episodes, analysis);
-  const negative = episodes.find((episode) => episode.effect === "none" && episode.id !== similar?.id);
-  const helpful = episodes.find((episode) => episode.effect === "helped" && episode.id !== similar?.id);
-  return [similar, negative, helpful].filter(Boolean).filter((episode, index, list) => list.findIndex((item) => item.id === episode.id) === index).slice(0, 3);
+  return findSimilarEpisodes(episodes, analysis, 3);
 }
 
 function mergeFactCandidates(current, next) {
@@ -709,6 +701,16 @@ function ComposerCompanion({ interactionState, bodyState, babyName }) {
   );
 }
 
+function SourceRows({ sources = [], label = "查看来源" }) {
+  if (!sources.length) return null;
+  return <div className="agent-source-list"><small>{label}</small>{sources.map((source) => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" aria-label={`打开来源：${source.title}`}><span><strong>{source.title}</strong><em>{[source.publisherOrAuthors, source.publishedAt].filter(Boolean).join(" · ")}</em></span><CaretRight /></a>)}</div>;
+}
+
+function AgentKnowledgeCard({ card }) {
+  if (!card) return null;
+  return <section className="agent-knowledge-card"><p className="eyebrow">从月之海召来的知识卡</p><h3>{card.title}</h3><p>{card.explanation}</p><div><strong>和妳此刻有什么关系</strong><p>{card.relevanceToCurrentSituation}</p></div>{card.boundary && <div className="knowledge-boundary"><ShieldCheck /><span>{card.boundary}</span></div>}<SourceRows sources={card.sources} /></section>;
+}
+
 function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeClaims, store, setStore, onClose, showMoment, goTo }) {
   const initialText = text.trim();
   const [workingText, setWorkingText] = useState("");
@@ -717,6 +719,7 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
   const [connectionState, setConnectionState] = useState(store.privacy.agentCloudConsent ? "checking" : "consent");
   const [interactionState, setInteractionState] = useState("idle");
   const [requestError, setRequestError] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [turnKind, setTurnKind] = useState(null);
   const [currentAction, setCurrentAction] = useState(null);
   const [factCandidates, setFactCandidates] = useState(null);
@@ -727,6 +730,7 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
   const [step, setStep] = useState("compose");
   const [viewportHeight, setViewportHeight] = useState(() => window.visualViewport?.height || window.innerHeight);
   const chatInputRef = useRef(null);
+  const chatThreadRef = useRef(null);
   const initialSentRef = useRef(false);
   const animationTimerRef = useRef(null);
   const { voiceStatus, isListening, toggleVoice } = useVoiceDraft(chatDraft, setChatDraft);
@@ -786,9 +790,19 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
     };
   }, []);
 
+  useEffect(() => {
+    const thread = chatThreadRef.current;
+    if (!thread) return;
+    const frame = window.requestAnimationFrame(() => {
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      thread.scrollTo({ top: thread.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages.length, isRequesting, requestError?.code, step, viewportHeight]);
+
   const continueConversation = async (nextText, { initial = false, retryTurn = null } = {}) => {
     const clean = nextText.trim();
-    if (!clean) return;
+    if (!clean || isRequesting) return;
     if (store.privacy.agentCloudConsent !== true) {
       setRequestError({ code: "agent_not_authorized", turn: null });
       setConnectionState("consent");
@@ -813,11 +827,12 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
     setRecordDraft(null);
     setSavedEpisodeId(null);
     if (!retryTurn) {
-      setMessages((current) => [...current, { id: userMessageId, role: "user", content: clean }]);
+      setMessages((current) => [...current, { id: userMessageId, role: "user", content: clean, deliveryState: "pending" }]);
       setChatDraft("");
     }
 
     if (nextAnalysis.redFlag) {
+      setMessages((current) => current.map((message) => message.id === userMessageId ? { ...message, deliveryState: "delivered" } : message));
       setStep("safety");
       setInteractionState("safety");
       return;
@@ -842,15 +857,16 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
           cycleAnchorConfirmed: store.cycleAnchorConfirmed === true,
           needs: store.profile.needs,
           allowRemote: true,
+          fastCompanionAllowed: requestHistory.length === 0 && memories.length === 0 && [...clean].length <= 80,
         },
       });
       setMessages((current) => [...current, {
         id: `assistant-${Date.now()}`,
         role: "assistant",
         content: result.reply,
-        evidence: result.evidence || [],
+        knowledgeCard: result.knowledgeCard,
         turnKind: result.turnKind,
-      }]);
+      }].map((message) => message.id === userMessageId ? { ...message, deliveryState: "delivered" } : message));
       setTurnKind(result.turnKind);
       setCurrentAction(result.action);
       setFactCandidates((current) => mergeFactCandidates(current, result.confirmedFactsCandidate));
@@ -858,7 +874,7 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
       setStore((current) => ({ ...current, conversationCount: (current.conversationCount || 0) + 1 }));
       setConnectionState("ready");
       setStep(result.turnKind === "action" && result.action ? "care" : "compose");
-      if (result.evidence?.length) {
+      if (result.knowledgeCard) {
         setInteractionState("retrieving");
         clearTimeout(animationTimerRef.current);
         animationTimerRef.current = setTimeout(() => scheduleInteraction("responding", 850), 420);
@@ -866,6 +882,7 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
     } catch (error) {
       const code = error instanceof AgentRequestError ? error.code : "agent_unavailable";
       setRequestError({ code, turn: { userMessageId, message: clean, analysis: nextAnalysis, workingText: nextWorkingText } });
+      setMessages((current) => current.map((message) => message.id === userMessageId ? { ...message, deliveryState: "failed" } : message));
       setInteractionState("offline");
       setStep("compose");
     }
@@ -878,13 +895,18 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
   };
 
   const retryFailedTurn = async () => {
-    if (!requestError?.turn) return;
-    const nextConnectionState = await refreshAgentStatus();
-    if (nextConnectionState !== "ready") {
-      setRequestError((current) => ({ ...current, code: nextConnectionState === "unconfigured" ? "agent_not_configured" : "agent_unavailable" }));
-      return;
+    if (!requestError?.turn || isRetrying || isRequesting) return;
+    setIsRetrying(true);
+    try {
+      const nextConnectionState = await refreshAgentStatus();
+      if (nextConnectionState !== "ready") {
+        setRequestError((current) => ({ ...current, code: nextConnectionState === "unconfigured" ? "agent_not_configured" : "agent_unavailable" }));
+        return;
+      }
+      await continueConversation(requestError.turn.message, { retryTurn: requestError.turn });
+    } finally {
+      setIsRetrying(false);
     }
-    continueConversation(requestError.turn.message, { retryTurn: requestError.turn });
   };
 
   const grantAgentConsent = () => {
@@ -982,24 +1004,16 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
     goTo("journey");
   };
 
-  const statusCopy = interactionState === "thinking" ? "联网 Agent 正在理解这一刻"
-    : interactionState === "retrieving" ? "正在核对可引用的专业资料"
-      : connectionState === "ready" ? "联网 Agent 已接通"
-        : connectionState === "checking" ? "正在确认联网 Agent"
-          : connectionState === "consent" ? "等待妳授权发送当前消息"
-            : connectionState === "unconfigured" ? "联网 Agent 尚未接通"
-              : "联网 Agent 暂时不可用";
-
   return (
     <div className="modal-layer agent-layer" style={{ "--agent-viewport-height": `${viewportHeight}px` }}>
       <div className="sheet-header"><button className="icon-button" aria-label="返回小窝" onClick={onClose}><ArrowLeft /></button><div><p className="eyebrow">妳的小窝 · 月经宝宝</p><h2>说给我听吧</h2></div><ShieldCheck /></div>
-      <div className={`agent-engine-state ${connectionState} interaction-${interactionState}`} role="status"><span />{statusCopy}</div>
-      <div className="chat-thread" aria-live="polite">
+      <div ref={chatThreadRef} className="chat-thread" aria-live="polite">
         {!messages.length && <div className="agent-empty-state"><p className="eyebrow">从此刻开始</p><h3>不用先把话整理好</h3><p>身体哪里不舒服、什么时候开始、今天还有什么必须完成的事，想到哪一句就说哪一句。</p><small><Lock /> 只有妳确认过的记录，才会进入长期记忆。</small></div>}
-        {messages.map((message) => message.role === "user" ? <div className="message user-message" key={message.id}>{message.content}</div> : <div className="message baby-message" key={message.id}><span className="assistant-pearl" /><div><p>{message.content}</p>{message.evidence?.length > 0 && <details className="agent-evidence-card"><summary>查看这次实际引用的专业资料</summary>{message.evidence.map((item) => <div key={item.claimId}><strong>{item.claim}</strong><small>{item.limitations || item.cannotConclude}</small>{item.sources?.[0] && <a href={item.sources[0].url} target="_blank" rel="noreferrer">{item.sources[0].title} · {item.sources[0].locator}</a>}</div>)}</details>}</div></div>)}
-        {requestError && <div className="agent-system-error" role="alert"><WarningCircle /><div><p className="eyebrow">系统状态 · 不是宝宝回复</p><h3>本轮没有生成回复</h3><p>{getAgentErrorCopy(requestError.code)}</p><div>{requestError.code === "agent_not_authorized" && <button className="primary-button" onClick={grantAgentConsent}>允许联网；消息仍由妳决定何时发送</button>}{requestError.turn && <button className="secondary-button" onClick={retryFailedTurn}>重新发送这一条</button>}{!requestError.turn && requestError.code !== "agent_not_authorized" && <button className="secondary-button" onClick={refreshAgentStatus}>重新检查连接</button>}</div></div></div>}
+        {messages.map((message) => message.role === "user" ? <div className={`message user-message ${message.deliveryState === "failed" ? "failed" : ""}`} key={message.id}><span>{message.content}</span>{message.deliveryState === "failed" && <small>没有收到回复</small>}</div> : <div className="message baby-message" key={message.id}><span className="assistant-pearl" /><div><p>{message.content}</p><AgentKnowledgeCard card={message.knowledgeCard} /></div></div>)}
+        {isRequesting && <div className="message baby-message agent-pending-message" role="status" aria-label="月经宝宝正在回应"><div className="pearl-thinking-dots" aria-hidden="true"><i /><i /><i /></div></div>}
+        {requestError && <div className="agent-system-error" role="alert"><WarningCircle /><div><p className="eyebrow">系统状态 · 不是宝宝回复</p><h3>本轮没有生成回复</h3><p>{getAgentErrorCopy(requestError.code)}</p><div>{requestError.code === "agent_not_authorized" && <button className="primary-button" onClick={grantAgentConsent}>允许联网；消息仍由妳决定何时发送</button>}{requestError.turn && <button className="secondary-button" disabled={isRetrying || isRequesting || connectionState === "checking"} onClick={retryFailedTurn}>{isRetrying ? "正在重新连接" : "重新发送这一条"}</button>}{!requestError.turn && requestError.code !== "agent_not_authorized" && <button className="secondary-button" disabled={connectionState === "checking"} onClick={refreshAgentStatus}>{connectionState === "checking" ? "正在重新连接" : "重新检查连接"}</button>}</div></div></div>}
         {analysis && step === "safety" && <div className="safety-card" role="alert"><WarningCircle weight="fill" /><div><p className="eyebrow">产品安全提示 · 不是 Agent 回复</p><h3>{analysis.redFlag.title}</h3><p>{analysis.redFlag.action}</p><div className="boundary-note">普通对话无法判断原因，也不能替代及时的专业评估。</div><div className="safety-actions">{emergencySafety && <a className="primary-button" href="tel:120">联系紧急帮助（中国大陆 120）</a>}<button className={emergencySafety ? "secondary-button" : "primary-button"} onClick={onClose}>{emergencySafety ? "我已看见" : "我会尽快联系医疗专业人员"}</button></div></div></div>}
-        {step === "care" && currentAction && <div className="gift-action-card"><div className="gift-ribbon"><Gift weight="fill" /> 一个由本轮 Agent 选择的可撤回行动</div><h3>{currentAction.title}</h3><p>{currentAction.why}</p><div className="action-how"><Clock /> {currentAction.how}</div><div className="boundary-note"><ShieldCheck /> {currentAction.stopWhen}</div><small>这张行动卡只来自本轮通过校验的联网结果；妳可以不采用。</small><button className="primary-button" onClick={() => setStep("feedback")}>我试过了，告诉宝宝真实结果</button></div>}
+        {step === "care" && currentAction && <div className="gift-action-card"><div className="gift-ribbon"><Gift weight="fill" /> 一个可以选择、也可以停下的办法</div><h3>{currentAction.title}</h3><p>{currentAction.why}</p><div className="action-how"><Clock /> {currentAction.how}</div><div className="boundary-note"><ShieldCheck /> {currentAction.stopWhen}</div><SourceRows sources={currentAction.sources} label="这个办法的专业来源" /><small>妳可以不采用；只有妳亲自反馈的结果，才会成为以后行动排序的依据。</small><button className="primary-button" onClick={() => setStep("feedback")}>我试过了，告诉宝宝真实结果</button></div>}
         {step === "feedback" && <div className="agent-card feedback-card"><p className="eyebrow">这次结果会先由妳确认</p><h3>{currentAction?.id === "evidence" ? "这次解释让妳更清楚了吗？" : "这个办法真实地帮到妳了吗？"}</h3><button onClick={() => beginEffectFeedback("helped")}><span className="effect-orb strong" /><span><strong>{currentAction?.id === "evidence" ? "清楚很多" : "很有帮助"}</strong><small>以后遇到相似处境，可以优先回看</small></span></button><button onClick={() => beginEffectFeedback("some")}><span className="effect-orb some" /><span><strong>{currentAction?.id === "evidence" ? "清楚一点" : "有一点帮助"}</strong><small>保留结果，但不夸大</small></span></button><button onClick={() => beginEffectFeedback("none")}><span className="effect-orb none" /><span><strong>{currentAction?.id === "evidence" ? "还是不清楚" : "没有帮助 / 更不舒服"}</strong><small>下次降低或阻止同类行动</small></span></button></div>}
         {step === "confirm" && recordDraft && <div className="record-confirm-card"><p className="eyebrow">保存前由妳确认</p><h3>这次要留下哪些事实？</h3><p>宝宝整理的是草稿。妳可以直接改；空白会保留成“没有记录”。</p><label>当时发生了什么<textarea rows="3" value={recordDraft.situation} onChange={(event) => setRecordDraft((current) => ({ ...current, situation: event.target.value }))} /></label><div className="record-core-result"><span><small>做了</small><strong>{recordDraft.actionTitle}</strong></span><span><small>结果</small><strong>{recordDraft.effect === "helped" ? "很有帮助" : recordDraft.effect === "some" ? "有一点帮助" : "没有帮助 / 更不舒服"}</strong></span></div><details><summary>补充或修改更多字段 <CaretDown /></summary><label>身体感受<input value={recordDraft.symptoms} onChange={(event) => setRecordDraft((current) => ({ ...current, symptoms: event.target.value }))} placeholder="没有记录" /></label><label>影响了什么<input value={recordDraft.functionalImpact} onChange={(event) => setRecordDraft((current) => ({ ...current, functionalImpact: event.target.value }))} placeholder="例如：很难集中注意" /></label><label>和以往有什么不同<input value={recordDraft.differenceFromUsual} onChange={(event) => setRecordDraft((current) => ({ ...current, differenceFromUsual: event.target.value }))} placeholder="不知道也可以留空" /></label><label>当时的现实限制<input value={recordDraft.currentConstraint} onChange={(event) => setRecordDraft((current) => ({ ...current, currentConstraint: event.target.value }))} placeholder="例如：下午还有会" /></label><label>什么时候开始<input value={recordDraft.onset} onChange={(event) => setRecordDraft((current) => ({ ...current, onset: event.target.value }))} placeholder="没有记录" /></label></details><div className="record-confirm-actions"><button className="primary-button" onClick={confirmRecord} disabled={!recordDraft.situation.trim()}>{savedEpisodeId ? "保存这次修改" : store.privacy.localMemory ? "确认并存入照护记录" : "确认，但不写入长期记忆"}</button><button className="secondary-button" onClick={() => setStep("feedback")}>返回修改结果</button></div></div>}
         {step === "saved" && <div className="saved-card"><div className="saved-icon"><Check weight="bold" /></div><p className="eyebrow">{store.privacy.localMemory ? "已保存到我的照护记录" : "只保留在当前对话"}</p><h3>{store.privacy.localMemory ? "处境、行动和真实结果已经连在一起" : "这次没有写入长期记忆"}</h3><p>{store.privacy.localMemory ? `结果是“${effect === "helped" ? "很有帮助" : effect === "some" ? "有一点帮助" : "没有帮助或更不舒服"}”。下次相似处境中，它会真实改变行动排序。` : "关闭长期记忆时，本轮不会成为下次建议依据，也不会自动分享。"}</p><div className="saved-actions"><button className="secondary-button" onClick={() => setStep("confirm")}>修改这条记录</button>{store.privacy.localMemory && <button className="primary-button" onClick={openCareRecords}><BookOpenText /> 查看我的照护记录</button>}<button className="secondary-button" onClick={returnHome}>回到小窝</button></div></div>}
@@ -1008,8 +1022,8 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
       <form className="agent-composer" onSubmit={submitChatMessage}>
         <ComposerCompanion interactionState={companionInteraction} bodyState={latestConfirmedBodyState} babyName={store.profile.babyName} />
         <label htmlFor="agent-live-message">月经宝宝正趴在这里听妳说</label>
-        <div className="agent-composer-row"><textarea ref={chatInputRef} id="agent-live-message" value={chatDraft} onFocus={() => !isRequesting && setInteractionState("listening")} onBlur={() => interactionState === "listening" && setInteractionState("idle")} onChange={(event) => { setChatDraft(event.target.value); if (requestError) setRequestError(null); if (!isRequesting) setInteractionState(event.target.value.trim() ? "listening" : "idle"); }} placeholder={analysis ? "继续补充这一刻发生了什么……" : "说说此刻发生了什么……"} rows={2} /><button type="button" className={isListening ? "voice-button listening" : "voice-button"} onClick={toggleVoice} aria-label={isListening ? "停止语音输入" : "开始语音输入"}>{isListening ? <MicrophoneSlash /> : <Microphone />}</button><button type="submit" disabled={!chatDraft.trim() || isRequesting} aria-label="发送给联网月经宝宝"><PaperPlaneTilt weight="fill" /></button></div>
-        <span>{voiceStatus || "发送给联网 Agent 前可以继续修改；不会自动保存或分享到社区"}</span>
+        <div className="agent-composer-row"><textarea ref={chatInputRef} id="agent-live-message" value={chatDraft} onFocus={() => !isRequesting && setInteractionState("listening")} onBlur={() => interactionState === "listening" && setInteractionState("idle")} onChange={(event) => { setChatDraft(event.target.value); if (!isRequesting) setInteractionState(event.target.value.trim() ? "listening" : "idle"); }} placeholder={analysis ? "继续补充这一刻发生了什么……" : "说说此刻发生了什么……"} rows={2} /><button type="button" className={isListening ? "voice-button listening" : "voice-button"} onClick={toggleVoice} aria-label={isListening ? "停止语音输入" : "开始语音输入"}>{isListening ? <MicrophoneSlash /> : <Microphone />}</button><button type="submit" disabled={!chatDraft.trim() || isRequesting || isRetrying} aria-label="发送给月经宝宝"><PaperPlaneTilt weight="fill" /></button></div>
+        <span>{voiceStatus || "发送前可以继续修改；只有妳确认后，才会留下长期记录"}</span>
       </form>
     </div>
   );

@@ -1,6 +1,6 @@
 import { getAgentErrorCopy, validateAgentResponse } from "./agentProtocol.js";
 
-const DEFAULT_TIMEOUT_MS = 24000;
+const DEFAULT_TIMEOUT_MS = 36000;
 
 export class AgentRequestError extends Error {
   constructor(code, options = {}) {
@@ -42,7 +42,7 @@ function responseShape(payload) {
     missingField: payload?.missingField,
     action: payload?.action,
     memoryDraft: payload?.memoryDraft,
-    evidenceIds: payload?.evidenceIds,
+    knowledgeCard: payload?.knowledgeCard,
     risk: payload?.risk,
     visualState: payload?.visualState,
   };
@@ -99,17 +99,19 @@ export async function requestAgentReply({
     const payload = await readPayload(response);
     if (!response.ok) throw new AgentRequestError(typeof payload?.error === "string" ? payload.error : "agent_provider_error");
 
-    const evidence = Array.isArray(payload?.evidence) ? payload.evidence : [];
+    const sourceUrls = [
+      ...(payload?.knowledgeCard?.sources || []),
+      ...(payload?.action?.sources || []),
+    ].map((source) => source?.url).filter(Boolean);
     const validation = validateAgentResponse(responseShape(payload), {
-      evidenceIds: evidence.map((item) => item?.claimId).filter(Boolean),
       actionIds: actionCandidates.map((item) => item.id),
       blockedActionIds,
+      sourceUrls,
     });
     if (!validation.ok) throw new AgentRequestError("agent_invalid_schema");
     return {
       ...responseShape(payload),
       reply: payload.reply.trim(),
-      evidence,
       model: typeof payload.model === "string" ? payload.model : null,
     };
   } catch (error) {

@@ -5,13 +5,16 @@ import test from "node:test";
 const appSource = await readFile(new URL("./App.jsx", import.meta.url), "utf8");
 const agentSource = await readFile(new URL("./agentClient.js", import.meta.url), "utf8");
 const serverSource = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
-const promptSource = await readFile(new URL("../prompts/menstrual-baby-system-v2.md", import.meta.url), "utf8");
+const orchestratorSource = await readFile(new URL("./agentOrchestrator.js", import.meta.url), "utf8");
+const promptSource = await readFile(new URL("../prompts/menstrual-baby-system-v3.md", import.meta.url), "utf8");
 const styleSource = await readFile(new URL("./styles.css", import.meta.url), "utf8");
 
 test("keeps free text and natural-language Agent replies in the core loop", () => {
   assert.ok(appSource.includes("月经宝宝正趴在这里听妳说"));
   assert.ok(appSource.includes("continueConversation"));
-  assert.ok(appSource.includes("联网 Agent 已接通"));
+  assert.equal(appSource.includes("联网 Agent 已接通"), false);
+  assert.ok(appSource.includes("agent-pending-message"));
+  assert.ok(appSource.includes("pearl-thinking-dots"));
   assert.ok(appSource.includes("本轮没有生成回复"));
   assert.ok(appSource.includes("系统状态 · 不是宝宝回复"));
   assert.ok(agentSource.includes('fetch("/api/agent"'));
@@ -20,12 +23,23 @@ test("keeps free text and natural-language Agent replies in the core loop", () =
   assert.equal(agentSource.includes("设备里先接住"), false);
   assert.equal(appSource.includes("设备内回应"), false);
   assert.ok(serverSource.includes('req.url === "/api/agent"'));
-  assert.ok(serverSource.includes('response_format: {'));
-  assert.ok(serverSource.includes('strict: true'));
+  assert.ok(orchestratorSource.includes('response_format: {'));
+  assert.ok(orchestratorSource.includes('strict: true'));
+  assert.ok(orchestratorSource.includes("menstrual_baby_plan"));
+  assert.ok(orchestratorSource.includes("menstrual_baby_compose"));
   assert.ok(promptSource.includes("用户身体潮汐外化出来的“月经宝宝”"));
+  assert.ok(promptSource.includes("听到妳说烦，我身上的泡泡也乱套了！我想靠妳近一点，看看妳在烦什么呀？"));
+  assert.equal(/Life Coach|教练|疗愈师/.test(promptSource), false);
   assert.ok(promptSource.includes("每轮只完成一个任务"));
   assert.equal(appSource.includes("宝宝目前理解到"), false);
   assert.equal(appSource.includes("我和妳一起理清"), false);
+});
+
+test("renders one unified knowledge card with whole-row clickable sources", () => {
+  ["AgentKnowledgeCard", "relevanceToCurrentSituation", "agent-source-list", 'target="_blank"', 'rel="noopener noreferrer"'].forEach((label) => assert.ok(appSource.includes(label), `missing knowledge-card contract: ${label}`));
+  assert.equal(appSource.includes("message.evidence"), false);
+  assert.equal(appSource.includes("联网 Agent 正在理解这一刻"), false);
+  assert.equal(appSource.includes("正在核对可引用的专业资料"), false);
 });
 
 test("renders exactly one active baby at the composer instead of reply avatars", () => {
