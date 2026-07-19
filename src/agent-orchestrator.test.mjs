@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AgentPipelineError, orchestrateAgentTurn } from "./agentOrchestrator.js";
+import { AgentPipelineError, canonicalizeAgentPlan, orchestrateAgentTurn } from "./agentOrchestrator.js";
 
 function facts(rawText) {
   return {
@@ -81,6 +81,35 @@ test("a planner schema failure closes the whole turn before composing", async ()
   };
   await assert.rejects(orchestrateAgentTurn(input({ fetchImpl })), (error) => error instanceof AgentPipelineError && error.code === "agent_invalid_schema");
   assert.equal(calls, 1);
+});
+
+test("planner facts and empty retrieval fields are canonicalized only from exact user evidence", () => {
+  const raw = plan("我现在小腹特别痛，下午还有会", {
+    confirmedFactsCandidate: {
+      ...facts("我现在小腹特别痛，下午还有会"),
+      symptoms: ["严重疼痛"],
+      bodyLocations: ["小腹"],
+      currentConstraint: "下午有会",
+      fieldProvenance: [
+        { key: "symptoms", source: "current_user_message", sourceRef: "current", quote: "特别痛", certainty: "explicit" },
+        { key: "bodyLocations", source: "current_user_message", sourceRef: "current", quote: "小腹特别痛", certainty: "explicit" },
+        { key: "currentConstraint", source: "current_user_message", sourceRef: "current", quote: "下午还有会", certainty: "explicit" },
+      ],
+    },
+    knowledgeNeed: { needed: false, category: "none", query: "", reason: "" },
+  });
+  const result = canonicalizeAgentPlan(raw, { message: "我现在小腹特别痛，下午还有会", memories: [] });
+  assert.deepEqual(result.confirmedFactsCandidate.symptoms, []);
+  assert.deepEqual(result.confirmedFactsCandidate.bodyLocations, ["小腹"]);
+  assert.equal(result.confirmedFactsCandidate.currentConstraint, null);
+  assert.deepEqual(result.confirmedFactsCandidate.fieldProvenance, [{
+    key: "bodyLocations",
+    source: "current_user_message",
+    sourceRef: "current",
+    quote: "小腹",
+    certainty: "explicit",
+  }]);
+  assert.deepEqual(result.knowledgeNeed, { needed: false, category: "none", query: null, reason: null });
 });
 
 test("a knowledge card can only use a URL returned by the actual PubMed retrieval", async () => {

@@ -98,6 +98,85 @@ function knowledgeCardFromDraft(draft, sources) {
   };
 }
 
+const FACT_FIELDS = [
+  "cycleContext",
+  "symptoms",
+  "bodyLocations",
+  "onset",
+  "functionalImpact",
+  "differenceFromUsual",
+  "currentConstraint",
+  "actionsTried",
+  "outcomes",
+];
+
+function verifiedFactSource(value, message, memories) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return null;
+  if (message.includes(text)) {
+    return { source: "current_user_message", sourceRef: "current", quote: text };
+  }
+  const memory = memories.find((item) => item?.id && JSON.stringify(item).includes(text));
+  return memory
+    ? { source: "confirmed_personal_memory", sourceRef: memory.id, quote: text }
+    : null;
+}
+
+function canonicalizeFacts(facts, message, memories) {
+  const next = { ...facts, rawText: message, fieldProvenance: [] };
+  FACT_FIELDS.forEach((key) => {
+    const values = Array.isArray(facts?.[key])
+      ? facts[key]
+      : typeof facts?.[key] === "string" && facts[key].trim()
+        ? [facts[key]]
+        : [];
+    const accepted = values.flatMap((value) => {
+      const source = verifiedFactSource(value, message, memories);
+      return source ? [{ value: value.trim(), source }] : [];
+    });
+    next[key] = Array.isArray(facts?.[key])
+      ? accepted.map((item) => item.value)
+      : accepted[0]?.value || null;
+    if (accepted.length) {
+      next.fieldProvenance.push({
+        key,
+        ...accepted[0].source,
+        certainty: "explicit",
+      });
+    }
+  });
+  return next;
+}
+
+function canonicalizeMemoryDraft(memoryDraft, facts) {
+  if (!memoryDraft?.shouldOffer) return { shouldOffer: false, summary: null, fields: [] };
+  const provenanceByKey = new Map((facts.fieldProvenance || []).map((item) => [item.key, item]));
+  const fields = (memoryDraft.fields || []).filter((field) => {
+    const values = Array.isArray(facts[field.key]) ? facts[field.key] : [facts[field.key]];
+    const provenance = provenanceByKey.get(field.key);
+    return values.includes(field.value) && provenance?.source === field.source;
+  });
+  if (!fields.length) return { shouldOffer: false, summary: null, fields: [] };
+  return {
+    shouldOffer: true,
+    summary: fields.map((field) => `${field.label}：${field.value}`).join("；"),
+    fields,
+  };
+}
+
+export function canonicalizeAgentPlan(plan, { message, memories = [] }) {
+  const confirmedFactsCandidate = canonicalizeFacts(plan.confirmedFactsCandidate, message.trim(), memories);
+  const knowledgeNeed = plan.knowledgeNeed?.needed
+    ? plan.knowledgeNeed
+    : { needed: false, category: "none", query: null, reason: null };
+  return {
+    ...plan,
+    confirmedFactsCandidate,
+    memoryDraft: canonicalizeMemoryDraft(plan.memoryDraft, confirmedFactsCandidate),
+    knowledgeNeed,
+  };
+}
+
 function shouldUseFastCompanionTurn({ message, history, memories, context }) {
   if (context.fastCompanionAllowed !== true) return false;
   const text = message.trim();
@@ -176,7 +255,7 @@ export async function orchestrateAgentTurn({
     });
   }
   const plannerSystem = `${systemPrompt}\n\n# 当前阶段：PLAN\n只输出不可见计划，不生成面向用户的回复。\n\n## 本轮产品上下文\n${JSON.stringify(context)}\n\n## 已确认的个人记忆\n${JSON.stringify(memories)}\n\n## 可选行动白名单\n${JSON.stringify(actionCandidates.map(({ sources: _sources, ...item }) => item))}\n\n## 相似处境中被本人负向结果阻止的行动\n${JSON.stringify(blockedActionIds)}`;
-  const plan = await callStructuredModel({
+  const rawPlan = await callStructuredModel({
     apiBase,
     apiModel,
     apiKey,
@@ -188,6 +267,7 @@ export async function orchestrateAgentTurn({
     fetchImpl,
     signal,
   });
+  const plan = canonicalizeAgentPlan(rawPlan, { message, memories });
   const planValidation = validateAgentPlan(plan, { message, memories, actionIds, blockedActionIds });
   if (!planValidation.ok) {
     throw new AgentPipelineError("agent_invalid_schema", {
