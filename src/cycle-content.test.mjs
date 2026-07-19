@@ -52,3 +52,22 @@ test("keeps cycle position, editable rhythm records and replayable onboarding in
   assert.ok(styleSource.includes("rgba(247,241,255,.74)"), "current position should use the pearl/lilac moonlight beam");
   assert.equal(styleSource.includes("#eac77e"), false, "the harsh gold position rule must not return");
 });
+
+test("uses the owner-selected cycle language and a custom start/end-date editor", () => {
+  assert.ok(appSource.includes("她周期全景图"));
+  assert.ok(appSource.includes("同一个时间点，看见我的身体正在如何协同"));
+  assert.ok(appSource.includes("我现在在生理周期的哪个位置"));
+  assert.ok(appSource.includes("由你确认，不替你猜"));
+  assert.ok(appSource.includes("这次月经从哪天结束"));
+  assert.ok(appSource.includes("还没有结束"));
+  assert.ok(appSource.includes("function CycleCalendar"));
+  assert.equal(appSource.includes("确认我的位置"), false);
+  assert.equal(appSource.includes("典型教学坐标"), false);
+});
+
+test("shows research context and personal rhythm together instead of hiding either behind tabs", () => {
+  assert.ok(appSource.includes("这个位置，研究能告诉我什么"));
+  assert.ok(appSource.includes("我的记录正在形成怎样的线索"));
+  assert.equal(appSource.includes('activeView === "research"'), false);
+  assert.equal(appSource.includes('activeView === "personal"'), false);
+});

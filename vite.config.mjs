@@ -12,5 +12,10 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
+  preview: {
+    host: "0.0.0.0",
+    port: 4173,
+    allowedHosts: true,
+  },
   plugins: [react()],
 });
