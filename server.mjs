@@ -101,7 +101,9 @@ async function agentReply(req, res) {
       body: JSON.stringify({
         model: apiModel,
         temperature: 0.35,
-        max_tokens: 320,
+        // step-3.5-flash includes reasoning tokens in this budget. A small cap can
+        // exhaust the budget before any user-visible content is produced.
+        max_tokens: 1024,
         messages: [{ role: "system", content: system }, ...cleanHistory(body.history), { role: "user", content: message }],
       }),
       signal: controller.signal,
