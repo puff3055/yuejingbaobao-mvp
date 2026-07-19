@@ -37,3 +37,18 @@ test("uses one aligned mobile axis and preserves illustration aspect ratios", ()
   assert.match(styleSource, /\.system-track > img \{[^}]*height: auto;/s);
   assert.equal(styleSource.includes(".system-track img { width: 100%; height: 62px"), false);
 });
+
+test("keeps cycle position, editable rhythm records and replayable onboarding in the demo", () => {
+  [
+    "我的当前位置",
+    "接下来可能发生什么",
+    "记录今天的节律",
+    "修改这次节律",
+    "删除这条节律记录",
+    "重看找回月之种子的过程",
+    "退出 Onboarding，不保存本次修改",
+  ].forEach((label) => assert.ok(appSource.includes(label), `missing interactive flow: ${label}`));
+  assert.ok(appSource.includes("growth: Math.max"), "replaying onboarding must not reset earned growth");
+  assert.ok(styleSource.includes("rgba(247,241,255,.74)"), "current position should use the pearl/lilac moonlight beam");
+  assert.equal(styleSource.includes("#eac77e"), false, "the harsh gold position rule must not return");
+});

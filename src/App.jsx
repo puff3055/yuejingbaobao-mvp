@@ -45,6 +45,7 @@ import {
   SUPPORT_NEEDS,
 } from "./data.js";
 import { analyzeInput, applyEpisodeOutcome, createEpisode, findSimilarEpisode, recallCopy } from "./agent.js";
+import { deriveCycleDayFromStart, getCycleMoment, localDateValue, upsertRhythmLog } from "./cycle.js";
 
 const STORAGE_KEY = "yuejing-baby-complete-universe-v2";
 
@@ -63,6 +64,9 @@ const initialStore = {
   },
   cycleDay: 24,
   cycleAnchorConfirmed: false,
+  cycleStartDate: "",
+  cycleUpdatedAt: null,
+  rhythmLogs: [],
   growth: 3,
   babyState: "curious",
   lifecycleCare: { seed: 0, baby: 0, phoenix: 0 },
@@ -85,7 +89,12 @@ function loadStore() {
       profile: { ...initialStore.profile, ...saved.profile },
       privacy: { ...initialStore.privacy, ...saved.privacy },
       lifecycleCare: { ...initialStore.lifecycleCare, ...saved.lifecycleCare },
+      rhythmLogs: Array.isArray(saved.rhythmLogs) ? saved.rhythmLogs : [],
     };
+    if (hydrated.cycleAnchorConfirmed && hydrated.cycleStartDate) {
+      const derivedDay = deriveCycleDayFromStart(hydrated.cycleStartDate);
+      if (derivedDay) hydrated.cycleDay = derivedDay;
+    }
     if (hydrated.babyState === "listening") hydrated.babyState = hydrated.profile.lifeStage === "seed" ? "curious" : "awake";
     return hydrated;
   } catch {
@@ -165,6 +174,7 @@ const CYCLE_TRACKS = [
 export function App() {
   const [store, setStore] = usePersistentStore();
   const [screen, setScreen] = useState("nest");
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [bodyMapOpen, setBodyMapOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -219,8 +229,8 @@ export function App() {
     setStore((s) => s.babyState === "listening" ? { ...s, babyState: s.profile.lifeStage === "seed" ? "curious" : "awake" } : s);
   };
 
-  if (!store.onboarded) {
-    return <Onboarding store={store} setStore={setStore} />;
+  if (!store.onboarded || onboardingOpen) {
+    return <Onboarding store={store} setStore={setStore} isReplay={onboardingOpen} onCancel={onboardingOpen ? () => setOnboardingOpen(false) : null} onComplete={() => setOnboardingOpen(false)} />;
   }
 
   return (
@@ -241,7 +251,7 @@ export function App() {
               showMoment={showMoment}
             />
           )}
-          {screen === "cycle" && <CycleScreen store={store} goTo={setScreen} />}
+          {screen === "cycle" && <CycleScreen store={store} setStore={setStore} goTo={setScreen} />}
           {screen === "knowledge" && (
             <KnowledgeScreen
               knowledge={knowledge}
@@ -255,7 +265,7 @@ export function App() {
             <GiftSeaScreen store={store} setStore={setStore} showMoment={showMoment} />
           )}
           {screen === "journey" && (
-            <JourneyScreen store={store} setStore={setStore} showMoment={showMoment} />
+            <JourneyScreen store={store} setStore={setStore} showMoment={showMoment} replayOnboarding={() => setOnboardingOpen(true)} />
           )}
         </main>
         <BottomNav screen={screen} setScreen={setScreen} />
@@ -288,30 +298,35 @@ export function App() {
   );
 }
 
-function Onboarding({ store, setStore }) {
+function Onboarding({ store, setStore, isReplay = false, onCancel, onComplete }) {
   const [step, setStep] = useState(0);
-  const [profile, setProfile] = useState(store.profile);
+  const [profile, setProfile] = useState(() => ({ ...store.profile, localMemory: store.privacy.localMemory, communityConsent: store.privacy.communityConsent }));
   const next = () => setStep((s) => Math.min(s + 1, 6));
   const back = () => setStep((s) => Math.max(s - 1, 0));
   const toggleNeed = (need) => setProfile((p) => ({ ...p, needs: p.needs.includes(need) ? p.needs.filter((n) => n !== need) : [...p.needs, need] }));
   const isSeed = profile.lifeStage === "seed";
   const isPhoenix = profile.lifeStage === "phoenix";
   const revealVisual = isSeed ? "/assets/lifecycle/moon-seed.png" : isPhoenix ? "/assets/lifecycle/blood-moon-phoenix.png" : "/assets/moon-sea-hero.png";
-  const finish = () => setStore((s) => ({ ...s, onboarded: true, profile, privacy: { localMemory: profile.localMemory, communityConsent: profile.communityConsent }, growth: 4, babyState: isSeed ? "curious" : "awake" }));
+  const finish = () => {
+    setStore((s) => ({ ...s, onboarded: true, profile, privacy: { ...s.privacy, localMemory: profile.localMemory, communityConsent: profile.communityConsent }, growth: Math.max(s.growth || 0, 4), babyState: isSeed ? "curious" : "awake" }));
+    onComplete?.();
+  };
   return (
     <div className="app-shell onboarding-shell">
       <div className="mobile-prototype onboarding">
         <div className="onboarding-progress"><span style={{ width: `${((step + 1) / 7) * 100}%` }} /></div>
         {step > 0 && <button className="icon-button onboarding-back" onClick={back} aria-label="返回"><ArrowLeft /></button>}
+        {isReplay && <button className="icon-button onboarding-close" onClick={onCancel} aria-label="退出 Onboarding，不保存本次修改"><X /></button>}
         {step === 0 && (
           <section className="onboarding-hero">
             <img src="/assets/lifecycle/moon-seed.png" alt="月之种子像一颗带月亮呆毛的珍珠蛋，窝在月光贝壳里" />
             <div className="onboarding-wash" />
             <div className="onboarding-copy">
-              <p className="eyebrow">月经宝宝 · 认领序章</p>
+              <p className="eyebrow">月经宝宝 · {isReplay ? "重看认领序章" : "认领序章"}</p>
               <h1>让月经，不再只是<br />日历上的一个红点</h1>
               <p>它会听懂你、记得你，也陪你把每一次身体经验变成下一次更从容的准备。</p>
-              <button className="primary-button" onClick={next}>找回我的月之种子 <CaretRight /></button>
+              <button className="primary-button" onClick={next}>{isReplay ? "从月之种子重新走一遍" : "找回我的月之种子"} <CaretRight /></button>
+              {isReplay && <span className="replay-safety"><ShieldCheck /> 资料已预填；退出或完成都不会清空节律、札记、礼物与关系痕迹</span>}
               <span className="microcopy">为女性的身体而设计，不以受孕为默认目标</span>
             </div>
           </section>
@@ -528,8 +543,8 @@ function BodyMapModal({ selected, setSelected, onClose, onContinue }) {
   );
 }
 
-function PlainScale({ label, note, value, options, onChange }) {
-  return <section className="plain-scale"><div><strong>{label}</strong><small>{note}</small></div><div>{options.map((option) => <button key={option} className={value === option ? "selected" : ""} onClick={() => onChange(option)}>{option}</button>)}</div></section>;
+function PlainScale({ label, note, value, options, onChange, allowClear = false }) {
+  return <section className="plain-scale"><div><strong>{label}</strong><small>{note}</small></div><div>{options.map((option) => <button type="button" key={option} className={value === option ? "selected" : ""} aria-pressed={value === option} onClick={() => onChange(allowClear && value === option ? null : option)}>{option}</button>)}</div></section>;
 }
 
 function AgentPanel({ text, zones, recordSnapshot, store, setStore, onClose, showMoment }) {
@@ -649,11 +664,17 @@ function AgentPanel({ text, zones, recordSnapshot, store, setStore, onClose, sho
   );
 }
 
-function CycleScreen({ store, goTo }) {
+function CycleScreen({ store, setStore, goTo }) {
   const [view, setView] = useState("research");
-  const hasPosition = store.cycleAnchorConfirmed && !["seed", "phoenix"].includes(store.profile.lifeStage);
+  const [positionOpen, setPositionOpen] = useState(false);
+  const [rhythmOpen, setRhythmOpen] = useState(false);
+  const [editingRhythm, setEditingRhythm] = useState(null);
+  const cycleMoment = getCycleMoment(store);
+  const hasPosition = cycleMoment.available;
+  const showCursor = hasPosition && cycleMoment.withinPanorama;
   const cursor = `${Math.min(97, Math.max(2, ((store.cycleDay - 1) / 29) * 100))}%`;
   const cursorEdge = store.cycleDay <= 4 ? "edge-left" : store.cycleDay >= 27 ? "edge-right" : "";
+  const latestRhythm = store.rhythmLogs?.[0] || null;
   const positionCopy = store.profile.lifeStage === "seed"
     ? "D1–D30 是初潮之后的典型教学坐标。月之种子还没有破壳，所以这里不会替你生成一个当前周期日。"
     : store.profile.lifeStage === "phoenix"
@@ -661,9 +682,27 @@ function CycleScreen({ store, goTo }) {
       : hasPosition
         ? `D1–D30 是典型教学坐标；自述 D${store.cycleDay} 只定位你主动提供的记录，不代表测到排卵、激素或身体状态。`
         : "D1–D30 是典型教学坐标。你还没有提供可用的来潮日期或周期日，所以今天标记保持空白。";
+  const openRhythm = (log = null) => {
+    setEditingRhythm(log);
+    setRhythmOpen(true);
+  };
+  const saveRhythm = (draftLog) => {
+    setStore((current) => ({ ...current, rhythmLogs: upsertRhythmLog(current.rhythmLogs, draftLog) }));
+    setRhythmOpen(false);
+    setEditingRhythm(null);
+    setView("personal");
+  };
+  const deleteRhythm = (logId) => {
+    setStore((current) => ({ ...current, rhythmLogs: (current.rhythmLogs || []).filter((log) => log.id !== logId) }));
+    setRhythmOpen(false);
+    setEditingRhythm(null);
+    setView("personal");
+  };
+  const portalTarget = document.querySelector(".mobile-prototype");
   return (
     <section className="page cycle-page">
       <div className="page-title"><p className="eyebrow">同一个时间点，看见身体如何协同</p><h1>周期全景图</h1><p>{positionCopy}</p></div>
+      <CyclePositionCard moment={cycleMoment} store={store} latestRhythm={latestRhythm} onEditPosition={() => setPositionOpen(true)} onRecord={() => openRhythm()} />
       <div className="segmented-control"><button className={view === "research" ? "active" : ""} onClick={() => setView("research")}>研究参考</button><button className={view === "personal" ? "active" : ""} onClick={() => setView("personal")}>我的节律</button></div>
       <div className="timeline-card">
         <div className="timeline-intro"><span>典型自然排卵周期 · 教学模型</span><small>阶段长度与排卵时点会变化</small></div>
@@ -673,12 +712,12 @@ function CycleScreen({ store, goTo }) {
             <div className="phase-row"><small>卵巢周期</small><div className="phase-band"><span className="follicular">卵泡期</span><span className="ovulation">排卵事件<br />不确定窗口</span><span className="luteal">黄体期</span></div></div>
             <div className="phase-row"><small>内膜周期</small><div className="phase-band"><span className="menses">月经 / 脱落</span><span className="growth">增殖期</span><span className="secretory">分泌期</span></div></div>
           </div>
-          {hasPosition && <div className={`today-line ${cursorEdge}`} style={{ left: cursor }}><span>自述 D{store.cycleDay}</span></div>}
+          {showCursor && <div className={`today-line ${cursorEdge}`} style={{ left: cursor }}><span><Moon weight="fill" />我的 D{store.cycleDay}</span></div>}
           {CYCLE_TRACKS.map((track) => <SystemTrack key={track.id} {...track} />)}
         </div>
         <div className="landscape-boundary"><Info weight="fill" /><span>这些是艺术化的相对顺序示意，不是你的实时 X 光、排卵确认、内膜测量或激素检测。</span></div>
       </div>
-      {view === "research" ? <ResearchClimate /> : <PersonalRhythm store={store} />}
+      {view === "research" ? <ResearchClimate /> : <PersonalRhythm store={store} onAdd={() => openRhythm()} onEdit={openRhythm} onLocate={() => setPositionOpen(true)} />}
       <details className="cycle-source-drawer">
         <summary><ShieldCheck /><span><strong>严谨性审查与完整来源</strong><small>权威来源已逐项映射；成品妇产科专家签字仍待完成</small></span><CaretDown /></summary>
         <div className="cycle-source-content">
@@ -688,7 +727,75 @@ function CycleScreen({ store, goTo }) {
           <button className="secondary-button" onClick={() => goTo("knowledge")}>去知识海继续核对说法</button>
         </div>
       </details>
+      {positionOpen && portalTarget && createPortal(<CyclePositionEditor store={store} onClose={() => setPositionOpen(false)} onSave={({ cycleDay, cycleStartDate }) => { setStore((current) => ({ ...current, cycleDay, cycleStartDate, cycleAnchorConfirmed: true, cycleUpdatedAt: new Date().toISOString() })); setPositionOpen(false); }} onClear={() => { setStore((current) => ({ ...current, cycleAnchorConfirmed: false, cycleStartDate: "", cycleUpdatedAt: new Date().toISOString() })); setPositionOpen(false); }} />, portalTarget)}
+      {rhythmOpen && portalTarget && createPortal(<RhythmLogModal store={store} existing={editingRhythm} onClose={() => { setRhythmOpen(false); setEditingRhythm(null); }} onSave={saveRhythm} onDelete={deleteRhythm} />, portalTarget)}
     </section>
+  );
+}
+
+function CyclePositionCard({ moment, store, latestRhythm, onEditPosition, onRecord }) {
+  const canLocate = !["seed", "phoenix"].includes(store.profile.lifeStage);
+  const rhythmSummary = latestRhythm
+    ? [latestRhythm.sleep, latestRhythm.pain, latestRhythm.energy, latestRhythm.mood].filter(Boolean).join(" · ")
+    : "今天还没有留下睡眠、疼痛、精力或心情";
+  return (
+    <section className={`cycle-position-card ${moment.available ? "has-position" : "needs-position"}`}>
+      <header>
+        <div className="cycle-position-orb"><Moon weight="fill" /><span>{moment.available ? `D${store.cycleDay}` : "—"}</span></div>
+        <div><p className="eyebrow">我的当前位置</p><h2>{moment.title}</h2></div>
+        {canLocate && <button className="position-edit-button" onClick={onEditPosition}>{moment.available ? "修改" : "定位"}</button>}
+      </header>
+      <div className="cycle-position-now">
+        <small>{moment.available ? "教学模型中的同时状态" : "为什么这里暂时留白"}</small>
+        <strong>{moment.phaseLabel || moment.description}</strong>
+        {moment.available && <p>{moment.description}</p>}
+      </div>
+      {moment.available && (
+        <div className="cycle-next-prep">
+          <div className="next-prep-title"><CalendarDots /><span><small>接下来可能发生什么</small><strong>{moment.next}</strong></span></div>
+          <div className="prep-list">{moment.preparations.map((item) => <span key={item}>{item}</span>)}</div>
+        </div>
+      )}
+      {canLocate && (
+        <div className="cycle-position-actions">
+          <button onClick={onRecord}><Plus /> 记录今天的节律</button>
+          <span><strong>你的真实感受</strong>{rhythmSummary}</span>
+        </div>
+      )}
+      <p className="cycle-position-boundary"><ShieldCheck /> “位置”来自你确认的日期或周期日；身体感受只来自你亲自填写的记录。</p>
+    </section>
+  );
+}
+
+function CyclePositionEditor({ store, onClose, onSave, onClear }) {
+  const today = localDateValue();
+  const [startDate, setStartDate] = useState(store.cycleStartDate || "");
+  const [dayInput, setDayInput] = useState(store.cycleAnchorConfirmed ? String(store.cycleDay) : "");
+  const dayNumber = Number(dayInput);
+  const validDay = Number.isInteger(dayNumber) && dayNumber >= 1 && dayNumber <= 365;
+  const updateStartDate = (value) => {
+    setStartDate(value);
+    const derived = deriveCycleDayFromStart(value);
+    setDayInput(derived ? String(derived) : "");
+  };
+  const setTodayAsStart = () => {
+    setStartDate(today);
+    setDayInput("1");
+  };
+  return (
+    <div className="modal-layer cycle-position-editor">
+      <div className="sheet-header"><button className="icon-button" aria-label="关闭周期定位" onClick={onClose}><X /></button><div><p className="eyebrow">由你确认，不替你猜</p><h2>我现在在周期哪里</h2></div><Moon weight="fill" /></div>
+      <div className="cycle-editor-content">
+        <section className="cycle-editor-intro"><span className="position-moon"><Moon weight="fill" /></span><div><small>当前准备定位</small><strong>{validDay ? `D${dayNumber}` : "等待你的记录"}</strong><p>{validDay && dayNumber > 30 ? "会保留真实天数，但定位线不硬塞进 D1–D30 教学图。" : "可以选日期自动换算，也可以直接填写今天是第几天。"}</p></div></section>
+        <button className="today-start-button" onClick={setTodayAsStart}><CalendarDots /><span><strong>今天刚来月经</strong><small>一键把今天确认为新的 D1</small></span><Check /></button>
+        <label className="field-label">这次月经从哪天开始<input type="date" max={today} value={startDate} onChange={(event) => updateStartDate(event.target.value)} /></label>
+        <div className="or-divider"><span>或者</span></div>
+        <label className="field-label">我知道今天是第几天<input inputMode="numeric" type="number" min="1" max="365" placeholder="例如：2" value={dayInput} onChange={(event) => { setDayInput(event.target.value); setStartDate(""); }} /></label>
+        <div className="boundary-note"><ShieldCheck /> 这只会定位你的自述记录。它不会宣称测到排卵、激素、内膜或诊断身体状态。</div>
+        <button className="primary-button" disabled={!validDay} onClick={() => onSave({ cycleDay: dayNumber, cycleStartDate: startDate })}>确认我的位置</button>
+        {store.cycleAnchorConfirmed && <button className="secondary-button clear-position-button" onClick={onClear}>这次日期不确定，先不显示位置</button>}
+      </div>
+    </div>
   );
 }
 
@@ -701,15 +808,61 @@ function ResearchClimate() {
   return <section className="climate-card"><div className="section-heading"><div><p className="eyebrow">证据气候，而不是统一曲线</p><h3>有些地方研究更清楚，有些应该留白</h3></div><Info /></div><div className="climate-items"><div><span className="climate-dot strong" /><p><strong>体温</strong><small>排卵后相对上移有较明确机制；不能据此单独确认排卵。</small></p></div><div><span className="climate-dot conditional" /><p><strong>睡眠与疼痛</strong><small>对有PMS/痛经症状的人群更值得关注，不代表人人固定变化。</small></p></div><div><span className="climate-dot limited" /><p><strong>心情与精力</strong><small>不画“平均女性曲线”；优先看你的重复记录。</small></p></div></div></section>;
 }
 
-function PersonalRhythm({ store }) {
-  const count = store.episodes.length;
-  const tracks = [
-    ["睡眠", (episode) => episode.tags?.includes("睡眠变化")],
-    ["疼痛/不适", (episode) => episode.tags?.some((tag) => ["下腹疼痛", "头痛", "腰背不适", "疼痛很强"].includes(tag)) || episode.bodyZones?.length],
-    ["精力", (episode) => episode.tags?.includes("精力偏低")],
-    ["心情", (episode) => episode.tags?.includes("情绪变化")],
-  ];
-  return <section className="personal-rhythm"><div className="section-heading"><div><p className="eyebrow">只用你授权的记录</p><h3>{count < 2 ? "现在还不能画出你的模式" : `已有 ${count} 次状态—行动—结果`}</h3></div><span className="count-pill">{count} 条</span></div>{tracks.map(([label, matches]) => { const records = store.episodes.filter((episode) => episode.cycleDay && matches(episode)).slice(0, 8); return <div className="rhythm-row" key={label}><strong>{label}</strong><div className="rhythm-track">{records.length ? records.map((episode) => <span key={episode.id} style={{ left: `${Math.min(98, Math.max(2, ((episode.cycleDay - 1) / 29) * 100))}%` }} className={label === "疼痛/不适" ? "record-dot pain" : "record-dot"} />) : <span className="missing-line">这个维度尚无记录</span>}</div></div>; })}<p className="microcopy">每个圆点只来自相应维度的真实记录；缺失就留白。数据不足时不连成趋势，压力、生病等竞争因素也会一起保留。</p></section>;
+const RHYTHM_DIMENSIONS = [
+  { key: "sleep", label: "睡眠", note: "按醒来后的恢复感", options: ["有恢复感", "一般", "没睡够"] },
+  { key: "pain", label: "疼痛/不适", note: "按它对当下生活的影响", options: ["没有", "有一点", "很影响我"] },
+  { key: "energy", label: "精力", note: "按今天能做事的余量", options: ["还可以", "偏低", "快耗尽"] },
+  { key: "mood", label: "心情", note: "选最接近的，不解释原因也可以", options: ["平稳", "有点烦", "很低落"] },
+];
+
+function PersonalRhythm({ store, onAdd, onEdit, onLocate }) {
+  const logs = store.rhythmLogs || [];
+  const positionedLogs = logs.filter((log) => log.cycleDay && log.cycleDay <= 30);
+  return (
+    <section className="personal-rhythm">
+      <div className="section-heading rhythm-heading"><div><p className="eyebrow">只用你授权的记录</p><h3>{logs.length < 2 ? "先留下今天，不急着画规律" : `已有 ${logs.length} 天真实节律`}</h3></div><span className="count-pill">{logs.length} 天</span></div>
+      <button className="rhythm-add-button" onClick={onAdd}><span><Plus /><strong>记录今天</strong></span><small>睡眠、疼痛、精力、心情，想填几个就填几个</small><CaretRight /></button>
+      {!store.cycleAnchorConfirmed && <button className="rhythm-location-note" onClick={onLocate}><CalendarDots /><span><strong>记录可以先发生</strong><small>确认周期日后，这些点才会落到 D1–D30 轴上</small></span><CaretRight /></button>}
+      <div className="rhythm-axis" aria-hidden="true"><span>D1</span><span>D15</span><span>D30</span></div>
+      {RHYTHM_DIMENSIONS.map(({ key, label }) => {
+        const records = positionedLogs.filter((log) => log[key]);
+        return <div className="rhythm-row" key={key}><strong>{label}</strong><div className="rhythm-track">{records.length ? records.slice(0, 12).map((log) => <span key={log.id} title={`D${log.cycleDay} · ${log[key]}`} aria-label={`${label}，D${log.cycleDay}，${log[key]}`} style={{ left: `${Math.min(98, Math.max(2, ((log.cycleDay - 1) / 29) * 100))}%` }} className={`record-dot ${key}`} />) : <span className="missing-line">这个维度尚无定位记录</span>}</div></div>;
+      })}
+      <p className="microcopy">每个圆点只代表那一天你亲自填写的一项感受；缺失就留白，数据不足时不连线、不生成“你的固定模式”。</p>
+      {logs.length > 0 && <div className="rhythm-log-list"><div className="rhythm-log-list-title"><strong>最近记录</strong><small>可以随时修改</small></div>{logs.slice(0, 5).map((log) => <button key={log.id} className="rhythm-log-card" onClick={() => onEdit(log)}><span className="rhythm-log-date"><Moon weight="fill" /><strong>{log.cycleDay ? `D${log.cycleDay}` : "未定位"}</strong><small>{new Date(log.recordedAt).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}</small></span><span className="rhythm-log-values">{RHYTHM_DIMENSIONS.filter(({ key }) => log[key]).map(({ key, label }) => <em key={key}><b>{label}</b>{log[key]}</em>)}</span><CaretRight /></button>)}</div>}
+      {store.episodes.length > 0 && <p className="rhythm-episode-note"><ChatCircleDots /> 对话中另有 {store.episodes.length} 条“状态—行动—结果”札记；这里不把两类数据混成同一种测量。</p>}
+    </section>
+  );
+}
+
+function RhythmLogModal({ store, existing, onClose, onSave, onDelete }) {
+  const [draftLog, setDraftLog] = useState(() => existing ? { ...existing } : {
+    id: null,
+    recordedAt: null,
+    cycleDay: store.cycleAnchorConfirmed ? store.cycleDay : null,
+    sleep: null,
+    pain: null,
+    energy: null,
+    mood: null,
+    note: "",
+  });
+  const hasValue = RHYTHM_DIMENSIONS.some(({ key }) => draftLog[key]) || draftLog.note.trim();
+  const canSave = Boolean(hasValue && store.privacy.localMemory);
+  return (
+    <div className="modal-layer rhythm-log-modal">
+      <div className="sheet-header"><button className="icon-button" aria-label="关闭节律记录" onClick={onClose}><X /></button><div><p className="eyebrow">轻轻留下一天</p><h2>{existing ? "修改这次节律" : "记录今天的节律"}</h2></div><span className="rhythm-day-chip">{draftLog.cycleDay ? `D${draftLog.cycleDay}` : "未定位"}</span></div>
+      <div className="rhythm-log-content">
+        <section className="rhythm-log-intro"><Moon weight="fill" /><div><strong>不需要填满</strong><p>只选你此刻有感觉的维度。它们都是主观自述，不是医学评分，也不会自动归因给周期。</p></div></section>
+        <div className="rhythm-scales">{RHYTHM_DIMENSIONS.map(({ key, label, note, options }) => <PlainScale key={key} label={label} note={note} value={draftLog[key]} options={options} allowClear onChange={(value) => setDraftLog((current) => ({ ...current, [key]: value }))} />)}</div>
+        <label className="rhythm-note-field">还想留下一句话（可选）<textarea maxLength="80" rows="3" placeholder="例如：昨晚赶工到很晚；今天还要出门……" value={draftLog.note} onChange={(event) => setDraftLog((current) => ({ ...current, note: event.target.value }))} /><small>{draftLog.note.length}/80</small></label>
+        {!store.privacy.localMemory && <div className="boundary-note"><Lock /> 你关闭了本地周期记忆，所以这条记录不会被保存。可以到“我的 → 隐私”重新开启。</div>}
+        <div className="boundary-note"><ShieldCheck /> 保存后仍可修改。一个点只说明“那天你这样记录过”，不证明是周期造成的。</div>
+        <button className="primary-button" disabled={!canSave} onClick={() => onSave(draftLog)}>{existing ? "保存修改" : "放进我的节律"} <Check /></button>
+        {existing && <button className="secondary-button rhythm-delete-button" onClick={() => { if (window.confirm("只删除这一条节律记录，其他札记和数据不会受影响。继续吗？")) onDelete(existing.id); }}><Trash /> 删除这条节律记录</button>}
+        <button className="secondary-button" onClick={onClose}>先不记录</button>
+      </div>
+    </div>
+  );
 }
 
 function KnowledgeScreen({ knowledge, store, setStore, showMoment, startAgent }) {
@@ -780,11 +933,20 @@ function Inventory({ store, setStore, showMoment }) {
   return <div className="inventory"><div className="section-heading"><div><p className="eyebrow">月潮生日准备</p><h3>已经放进贝壳的照护礼物</h3></div><Package /></div>{prepared.map((gift) => <article className="inventory-card" key={gift.id}><Gift weight="fill" /><div><small>{gift.kind}</small><h3>{gift.title}</h3><p>{gift.caution}</p></div></article>)}<div className="section-heading incoming-heading"><div><p className="eyebrow">收到的月信</p><h3>{store.receivedGifts.length} 份等待你决定</h3></div><EnvelopeOpen /></div>{store.receivedGifts.length ? store.receivedGifts.map((gift) => <article className="incoming-card" key={gift.id}><div><small>来自 {BABY_FRIENDS.find((f) => f.id === gift.from)?.name || "匿名宝宝"}</small><h3>{gift.title}</h3><p>公开经验礼物 · 尚未成为你的个人结论</p></div><button disabled={gift.status === "opened"} onClick={() => openGift(gift)}>{gift.status === "opened" ? "已打开" : "打开贝壳"}</button></article>) : <div className="empty-card">去海面派宝宝接一份月信吧。你随时可以忽略，不会失去成长。</div>}</div>;
 }
 
-function JourneyScreen({ store, setStore, showMoment }) {
+function JourneyScreen({ store, setStore, showMoment, replayOnboarding }) {
   const [section, setSection] = useState("growth");
   const exportData = () => { const blob = new Blob([JSON.stringify(store, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "我的月经宝宝数据.json"; a.click(); URL.revokeObjectURL(url); };
   const reset = () => { if (!window.confirm("只清除完整宇宙版的本地演示数据，原版本不会受影响。继续吗？")) return; localStorage.removeItem(STORAGE_KEY); location.reload(); };
-  return <section className="page journey-page"><div className="page-title"><p className="eyebrow">不是连续打卡，而是共同经历</p><h1>{store.profile.babyName}的成长旅程</h1><p>照护、诚实反馈、送出和收到月信，都会留下不同的关系痕迹。</p><div className="companion-age-note"><Moon weight="fill" /><span>{store.profile.lifeStage === "seed" ? "月之种子没有生日；它正在等身体自己的破壳时间" : menarcheStory(store.profile)}</span></div></div><div className="segmented-control"><button className={section === "growth" ? "active" : ""} onClick={() => setSection("growth")}>生命周期</button><button className={section === "report" ? "active" : ""} onClick={() => setSection("report")}>周期报告</button><button className={section === "privacy" ? "active" : ""} onClick={() => setSection("privacy")}>隐私</button></div>{section === "growth" && <Lifecycle store={store} setStore={setStore} showMoment={showMoment} />}{section === "report" && <Report store={store} setStore={setStore} showMoment={showMoment} />}{section === "privacy" && <div className="privacy-panel"><PrivacyRow icon={Lock} title="本地周期记忆" copy="关闭后不再新增长期记忆" checked={store.privacy.localMemory} onChange={(v) => setStore((s) => ({ ...s, privacy: { ...s.privacy, localMemory: v } }))} /><PrivacyRow icon={EnvelopeOpen} title="允许选择分享月信" copy="每一封仍需单独确认" checked={store.privacy.communityConsent} onChange={(v) => setStore((s) => ({ ...s, privacy: { ...s.privacy, communityConsent: v } }))} /><button className="settings-button" onClick={exportData}><DownloadSimple /> 导出我的本地数据 <CaretRight /></button><button className="settings-button danger" onClick={reset}><Trash /> 清除完整宇宙版数据 <CaretRight /></button><div className="boundary-note"><ShieldCheck /> 社区和月潮生日数据是明确标记的演示种子；没有真实在线用户或真实活动量。</div></div>}</section>;
+  return (
+    <section className="page journey-page">
+      <div className="page-title"><p className="eyebrow">不是连续打卡，而是共同经历</p><h1>{store.profile.babyName}的成长旅程</h1><p>照护、诚实反馈、送出和收到月信，都会留下不同的关系痕迹。</p><div className="companion-age-note"><Moon weight="fill" /><span>{store.profile.lifeStage === "seed" ? "月之种子没有生日；它正在等身体自己的破壳时间" : menarcheStory(store.profile)}</span></div></div>
+      <button className="onboarding-replay-card" onClick={replayOnboarding}><span className="replay-seed"><img src="/assets/lifecycle/moon-seed.png" alt="月之种子在月光贝壳中" /></span><span><small>完整 Onboarding · 7 步</small><strong>重看找回月之种子的过程</strong><em>资料会预填；不会清空节律、札记、礼物或关系痕迹</em></span><CaretRight /></button>
+      <div className="segmented-control"><button className={section === "growth" ? "active" : ""} onClick={() => setSection("growth")}>生命周期</button><button className={section === "report" ? "active" : ""} onClick={() => setSection("report")}>周期报告</button><button className={section === "privacy" ? "active" : ""} onClick={() => setSection("privacy")}>隐私</button></div>
+      {section === "growth" && <Lifecycle store={store} setStore={setStore} showMoment={showMoment} />}
+      {section === "report" && <Report store={store} setStore={setStore} showMoment={showMoment} />}
+      {section === "privacy" && <div className="privacy-panel"><PrivacyRow icon={Lock} title="本地周期记忆" copy="关闭后不再新增长期记忆" checked={store.privacy.localMemory} onChange={(v) => setStore((s) => ({ ...s, privacy: { ...s.privacy, localMemory: v } }))} /><PrivacyRow icon={EnvelopeOpen} title="允许选择分享月信" copy="每一封仍需单独确认" checked={store.privacy.communityConsent} onChange={(v) => setStore((s) => ({ ...s, privacy: { ...s.privacy, communityConsent: v } }))} /><button className="settings-button" onClick={exportData}><DownloadSimple /> 导出我的本地数据 <CaretRight /></button><button className="settings-button danger" onClick={reset}><Trash /> 清除完整宇宙版数据 <CaretRight /></button><div className="boundary-note"><ShieldCheck /> 社区和月潮生日数据是明确标记的演示种子；没有真实在线用户或真实活动量。</div></div>}
+    </section>
+  );
 }
 
 function Lifecycle({ store, setStore, showMoment }) {
