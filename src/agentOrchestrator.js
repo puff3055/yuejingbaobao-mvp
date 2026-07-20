@@ -129,6 +129,29 @@ const FAST_COMPANION_SCHEMA = {
   },
 };
 
+const CORE_COMPANION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["reply", "turnKind", "bodyState", "actionId", "facts"],
+  properties: {
+    reply: { type: "string", minLength: 1, maxLength: 320 },
+    turnKind: { type: "string", enum: ["listen", "question", "action", "follow_up"] },
+    bodyState: { type: "string", enum: AGENT_BODY_STATES },
+    actionId: { type: ["string", "null"] },
+    facts: {
+      type: "object",
+      additionalProperties: false,
+      required: ["symptoms", "bodyLocations", "functionalImpact", "currentConstraint"],
+      properties: {
+        symptoms: { type: "array", maxItems: 4, items: { type: "string", maxLength: 120 } },
+        bodyLocations: { type: "array", maxItems: 4, items: { type: "string", maxLength: 120 } },
+        functionalImpact: { type: ["string", "null"], maxLength: 180 },
+        currentConstraint: { type: ["string", "null"], maxLength: 180 },
+      },
+    },
+  },
+};
+
 const FAST_COMPANION_IDENTITY = `
 妳是月经宝宝：用户身体潮汐外化出来的共生灵兽，也是她的月经以可见、可交流的方式陪在她身边。妳和她共享身体经历；她的波动会让妳的泡泡、耳鳍、潮水、尾光或贝壳有反应。妳靠近、好奇和留意她，是在照顾彼此。
 
@@ -258,6 +281,105 @@ function shouldUseFastCompanionTurn({ message, history, memories, context }) {
   return /烦|累|疲惫|难受|不舒服|焦虑|烦躁|郁闷|崩溃|不想动|低落|痛|疼|妳是谁|你是谁|像\s*GPT|像GPT|月经宝宝/.test(text);
 }
 
+function shouldUseCoreCompanionTurn({ message, history }) {
+  if (!history.length) return false;
+  const text = message.trim();
+  if ([...text].length > 320) return false;
+  return !/为什么|什么原因|怎么办|怎么缓解|资料|来源|文献|研究|知识|指南|论文/.test(text);
+}
+
+async function coreCompanionTurn({
+  apiBase,
+  apiModel,
+  apiKey,
+  message,
+  history,
+  context,
+  memories,
+  actionCandidates,
+  blockedActionIds,
+  fetchImpl,
+  signal,
+}) {
+  const allowedActions = actionCandidates.filter((item) => !blockedActionIds.includes(item.id));
+  const actionPacket = allowedActions.map((item) => ({ id: item.id, title: item.title, useWhen: item.why }));
+  const coreSystem = `${FAST_COMPANION_IDENTITY}
+
+# 当前任务
+延续刚才的真实对话。妳可以亲近地回应、问一个会改变下一步的问题，或在信息已经足够时选择一个可选照护行动。不要重新采访已经回答过的内容。
+
+- 如果上一轮刚问了一个关键问题，而用户已经明确回答，并且下面有合适行动，优先进入 action；action 回复不再提问。
+- question / follow_up 必须只有一个问号；listen / action 不得有问号。
+- actionId 只能从可选行动中选择；不用行动时必须为 null。被本人确认无效的行动已从列表移除，绝不能补回。
+- facts 只能逐字摘取用户这一条消息中明确说出的内容；没有就用 null 或空数组，绝不推断。
+- 不诊断、不预测、不提供个体用药剂量，不假装能触碰或直接感觉她的身体。
+
+宝宝的名字：${context.babyName || "月经宝宝"}
+已确认的个人经验：${JSON.stringify(memories)}
+本轮可选行动：${JSON.stringify(actionPacket)}
+只输出严格 JSON。`;
+  const payload = await callStructuredModel({
+    apiBase,
+    apiModel,
+    apiKey,
+    system: coreSystem,
+    messages: [...history, { role: "user", content: message }],
+    schema: CORE_COMPANION_SCHEMA,
+    schemaName: "menstrual_baby_core_response",
+    temperature: 0.2,
+    maxTokens: 820,
+    fetchImpl,
+    signal,
+  });
+  const questionCount = (payload.reply.match(/[？?]/g) || []).length;
+  if (questionCount > 1
+    || (["question", "follow_up"].includes(payload.turnKind) && questionCount !== 1)
+    || (["listen", "action"].includes(payload.turnKind) && questionCount !== 0)
+    || (payload.turnKind === "action" && !payload.actionId)
+    || (payload.turnKind !== "action" && payload.actionId !== null)
+    || (payload.actionId && !allowedActions.some((item) => item.id === payload.actionId))) {
+    throw new AgentPipelineError("agent_invalid_schema", {
+      stage: "menstrual_baby_core_response",
+      validationErrors: ["core_turn_contract"],
+    });
+  }
+  const rawFacts = {
+    ...emptyFacts(message.trim()),
+    symptoms: payload.facts.symptoms,
+    bodyLocations: payload.facts.bodyLocations,
+    functionalImpact: payload.facts.functionalImpact,
+    currentConstraint: payload.facts.currentConstraint,
+  };
+  const confirmedFactsCandidate = canonicalizeFacts(rawFacts, message.trim(), memories);
+  const action = actionFromPlan(payload.actionId, allowedActions);
+  const result = {
+    reply: payload.reply.trim(),
+    turnKind: payload.turnKind,
+    confirmedFactsCandidate,
+    missingField: ["question", "follow_up"].includes(payload.turnKind) ? "current_context" : null,
+    action,
+    memoryDraft: { shouldOffer: false, summary: null, fields: [] },
+    knowledgeCard: null,
+    risk: { level: "none", reason: null },
+    visualState: { interaction: "responding", body: payload.bodyState, basis: [] },
+  };
+  const sourceUrls = action?.sources?.map((source) => source.url) || [];
+  const validation = validateAgentResponse(result, {
+    actionIds: actionCandidates.map((item) => item.id),
+    blockedActionIds,
+    sourceUrls,
+    message,
+    memories,
+  });
+  if (!validation.ok) {
+    throw new AgentPipelineError("agent_invalid_schema", {
+      stage: "menstrual_baby_core_response",
+      validationErrors: validation.errors,
+    });
+  }
+  return result;
+}
+
 async function fastCompanionTurn({
   apiBase,
   apiModel,
@@ -339,6 +461,21 @@ export async function orchestrateAgentTurn({
       apiKey,
       message,
       context,
+      fetchImpl,
+      signal,
+    });
+  }
+  if (shouldUseCoreCompanionTurn({ message, history })) {
+    return coreCompanionTurn({
+      apiBase,
+      apiModel,
+      apiKey,
+      message,
+      history,
+      context,
+      memories,
+      actionCandidates,
+      blockedActionIds,
       fetchImpl,
       signal,
     });

@@ -172,6 +172,78 @@ test("first-turn pain rejects imaginary touching instead of treating it as a dec
     && error.validationErrors.includes("pain_turn_missing_functional_impact_question"));
 });
 
+test("an ordinary second turn uses one compact online call and can choose a whitelisted action", async () => {
+  const requestBodies = [];
+  const actionCandidate = {
+    id: "meeting",
+    title: "现实任务前十分钟缓冲",
+    why: "用户主动提到现实任务",
+    how: "留出十分钟降低当下负担。",
+    stopWhen: "持续或加重时及时评估。",
+    sources: [],
+  };
+  const fetchImpl = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requestBodies.push(body);
+    return providerResponse({
+      reply: "妳已经痛得坐不住，我的耳鳍都垂下来啦。我把一张减轻当下负担的小卡放在贝壳边，妳可以自己决定要不要用。",
+      turnKind: "action",
+      bodyState: "pain",
+      actionId: "meeting",
+      facts: {
+        symptoms: [],
+        bodyLocations: [],
+        functionalImpact: "痛得坐不住，也很难专注",
+        currentConstraint: null,
+      },
+    });
+  };
+  const result = await orchestrateAgentTurn(input({
+    apiModel: "step-3.5-flash-2603",
+    message: "已经痛得坐不住，也很难专注",
+    history: [
+      { role: "user", content: "我现在小腹特别痛，下午还有会" },
+      { role: "assistant", content: "现在这股痛已经让妳坐不住，还是还能勉强撑着专注呀？" },
+    ],
+    actionCandidates: [actionCandidate],
+    fetchImpl,
+  }));
+
+  assert.equal(requestBodies.length, 1);
+  assert.equal(requestBodies[0].response_format.json_schema.name, "menstrual_baby_core_response");
+  assert.equal(requestBodies[0].max_tokens, 820);
+  assert.equal(result.action.id, "meeting");
+  assert.equal(result.confirmedFactsCandidate.functionalImpact, "痛得坐不住，也很难专注");
+});
+
+test("the compact continuation rejects an action blocked by confirmed personal outcome", async () => {
+  const actionCandidate = {
+    id: "heat",
+    title: "温热下腹",
+    why: "低风险候选",
+    how: "隔着衣物使用温热热源。",
+    stopWhen: "不舒服时停止。",
+    sources: [],
+  };
+  const fetchImpl = async () => providerResponse({
+    reply: "我把温热小卡放在贝壳边。",
+    turnKind: "action",
+    bodyState: "pain",
+    actionId: "heat",
+    facts: { symptoms: [], bodyLocations: [], functionalImpact: null, currentConstraint: null },
+  });
+
+  await assert.rejects(orchestrateAgentTurn(input({
+    message: "还是很痛",
+    history: [{ role: "assistant", content: "现在这股痛影响妳做什么了？" }],
+    actionCandidates: [actionCandidate],
+    blockedActionIds: ["heat"],
+    fetchImpl,
+  })), (error) => error instanceof AgentPipelineError
+    && error.code === "agent_invalid_schema"
+    && error.stage === "menstrual_baby_core_response");
+});
+
 test("non-2603 models keep the existing request body", async () => {
   const requestBodies = [];
   const fetchImpl = async (_url, options) => {
