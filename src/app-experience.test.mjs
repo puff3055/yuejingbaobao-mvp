@@ -76,7 +76,7 @@ test("uses a cautious five-in five-out breathing cue rather than promising a tre
 });
 
 test("makes onboarding choices visible and truthful", () => {
-  ["妳的身体出生时", "还记得妳的第一次月经时间吗？", "记录宝宝的破壳日", "哪些东西被允许留下？", "允许把当前消息发给联网 Agent"].forEach((label) => {
+  ["妳的身体出生时", "还记得妳的第一次月经时间吗？", "记录宝宝的破壳日", "哪些东西被允许留下？", "允许宝宝在需要时联网回应"].forEach((label) => {
     assert.ok(appSource.includes(label), `missing onboarding choice: ${label}`);
   });
   assert.ok(appSource.includes("SUPPORT_EXPLANATIONS[need]"));
