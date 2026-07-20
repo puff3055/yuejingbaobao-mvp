@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+.npm-cache/
+.DS_Store
+*.log
+tmp/
+artifacts/
+.opendeploy/
+.codex/
+*.inspect.ndjson
