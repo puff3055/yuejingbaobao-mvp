@@ -154,6 +154,9 @@ test("first-turn pain with a real-world constraint uses one online companion que
   assert.deepEqual(calls, ["menstrual_baby_fast_response"]);
   assert.equal(result.reply.includes("下午三点"), false);
   assert.equal(result.action, null);
+  assert.deepEqual(result.confirmedFactsCandidate.bodyLocations, ["小腹"]);
+  assert.deepEqual(result.confirmedFactsCandidate.symptoms, ["特别痛"]);
+  assert.equal(result.confirmedFactsCandidate.currentConstraint, "下午还有会");
 });
 
 test("first-turn pain rejects imaginary touching instead of treating it as a decision-changing question", async () => {
@@ -192,8 +195,8 @@ test("an ordinary second turn uses one compact online call and can choose a whit
       actionId: "meeting",
       facts: {
         symptoms: [],
-        bodyLocations: [],
-        functionalImpact: "痛得坐不住，也很难专注",
+        bodyLocations: ["痛得坐不住，也很难专注"],
+        functionalImpact: null,
         currentConstraint: null,
       },
     });
@@ -213,7 +216,8 @@ test("an ordinary second turn uses one compact online call and can choose a whit
   assert.equal(requestBodies[0].response_format.json_schema.name, "menstrual_baby_core_response");
   assert.equal(requestBodies[0].max_tokens, 820);
   assert.equal(result.action.id, "meeting");
-  assert.equal(result.confirmedFactsCandidate.functionalImpact, "痛得坐不住，也很难专注");
+  assert.deepEqual(result.confirmedFactsCandidate.bodyLocations, []);
+  assert.equal(result.confirmedFactsCandidate.functionalImpact, "已经痛得坐不住，也很难专注");
 });
 
 test("the compact continuation rejects an action blocked by confirmed personal outcome", async () => {

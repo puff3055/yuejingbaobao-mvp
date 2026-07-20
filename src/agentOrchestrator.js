@@ -191,6 +191,48 @@ function emptyFacts(message) {
   };
 }
 
+const BODY_LOCATION_PATTERN = /小腹|下腹|腹部|肚子|盆腔|外阴|阴道|乳房|胸部|胸|头部|头|太阳穴|颈部|脖子|肩部|肩|腰部|腰|背部|背|臀部|臀|大腿|小腿|腿|膝盖|脚|全身/g;
+const BODY_LOCATION_VALUE_PATTERN = /小腹|下腹|腹部|肚子|盆腔|外阴|阴道|乳房|胸部|胸|头部|头|太阳穴|颈部|脖子|肩部|肩|腰部|腰|背部|背|臀部|臀|大腿|小腿|腿|膝盖|脚|全身/;
+const SYMPTOM_PATTERN = /痛经|腹痛|头痛|腰痛|背痛|乳房胀痛|胀痛|坠痛|坠胀|痉挛|剧痛|特别痛|很痛|疼痛|头晕|恶心|呕吐|腹泻|乏力|疲乏|出冷汗|便秘|水肿|腹胀|发热|发烧|异常出血|大量出血|漏血|烦躁|焦虑|低落|失眠|睡不好/g;
+const SYMPTOM_VALUE_PATTERN = /痛经|腹痛|头痛|腰痛|背痛|乳房胀痛|胀痛|坠痛|坠胀|痉挛|剧痛|特别痛|很痛|疼痛|头晕|恶心|呕吐|腹泻|乏力|疲乏|出冷汗|便秘|水肿|腹胀|发热|发烧|异常出血|大量出血|漏血|烦躁|焦虑|低落|失眠|睡不好/;
+const FUNCTIONAL_IMPACT_PATTERN = /坐不住|站不住|走不动|难(?:以)?专注|很难专注|无法专注|没法专注|注意力不集中|不能集中|无法集中|没法集中|不能(?:工作|上课|睡觉|走路|坐着|活动)|影响(?:工作|上课|睡眠|走路|活动|专注)/;
+const CONSTRAINT_PATTERN = /(?:今天|明天|上午|下午|晚上|今晚|明早)?[^，。！？]{0,5}(?:有会|开会|会议|汇报|上班|工作|考试|答辩|出差|旅行|高铁)/;
+
+function exactMatches(message, pattern) {
+  return [...new Set(message.match(pattern) || [])];
+}
+
+function normalizeExactFacts(message, supplied = {}) {
+  const text = message.trim();
+  const suppliedLocations = Array.isArray(supplied.bodyLocations) ? supplied.bodyLocations : [];
+  const suppliedSymptoms = Array.isArray(supplied.symptoms) ? supplied.symptoms : [];
+  const explicitConstraint = text.match(CONSTRAINT_PATTERN)?.[0]?.trim() || null;
+  const suppliedConstraint = typeof supplied.currentConstraint === "string"
+    && CONSTRAINT_PATTERN.test(supplied.currentConstraint)
+    ? supplied.currentConstraint.trim()
+    : null;
+  const functionalImpact = FUNCTIONAL_IMPACT_PATTERN.test(text)
+    ? text
+    : typeof supplied.functionalImpact === "string"
+      && FUNCTIONAL_IMPACT_PATTERN.test(supplied.functionalImpact)
+      ? supplied.functionalImpact.trim()
+      : null;
+  return {
+    ...emptyFacts(text),
+    ...supplied,
+    bodyLocations: [...new Set([
+      ...exactMatches(text, BODY_LOCATION_PATTERN),
+      ...suppliedLocations.filter((value) => BODY_LOCATION_VALUE_PATTERN.test(value)),
+    ])].slice(0, 4),
+    symptoms: [...new Set([
+      ...exactMatches(text, SYMPTOM_PATTERN),
+      ...suppliedSymptoms.filter((value) => SYMPTOM_VALUE_PATTERN.test(value)),
+    ])].slice(0, 4),
+    functionalImpact,
+    currentConstraint: explicitConstraint || suppliedConstraint,
+  };
+}
+
 function verifiedFactSource(value, message, memories) {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) return null;
@@ -343,13 +385,7 @@ async function coreCompanionTurn({
       validationErrors: ["core_turn_contract"],
     });
   }
-  const rawFacts = {
-    ...emptyFacts(message.trim()),
-    symptoms: payload.facts.symptoms,
-    bodyLocations: payload.facts.bodyLocations,
-    functionalImpact: payload.facts.functionalImpact,
-    currentConstraint: payload.facts.currentConstraint,
-  };
+  const rawFacts = normalizeExactFacts(message, payload.facts);
   const confirmedFactsCandidate = canonicalizeFacts(rawFacts, message.trim(), memories);
   const action = actionFromPlan(payload.actionId, allowedActions);
   const result = {
@@ -413,7 +449,7 @@ async function fastCompanionTurn({
   const canonicalResult = {
     reply: result.reply.trim(),
     turnKind,
-    confirmedFactsCandidate: emptyFacts(message.trim()),
+    confirmedFactsCandidate: canonicalizeFacts(normalizeExactFacts(message), message.trim(), []),
     missingField: turnKind === "question" ? "current_context" : null,
     memoryDraft: { shouldOffer: false, summary: null, fields: [] },
     action: null,
