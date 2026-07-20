@@ -68,7 +68,7 @@ test("a successful turn always uses a hidden planner before the user-facing comp
   };
   const result = await orchestrateAgentTurn(input({ fetchImpl }));
   assert.deepEqual(stages, ["menstrual_baby_plan", "menstrual_baby_compose"]);
-  assert.equal(requestBodies.every((body) => !Object.hasOwn(body, "max_tokens")), true);
+  assert.deepEqual(requestBodies.map((body) => body.max_tokens), [1400, 800]);
   assert.equal(result.reply, "听到妳说烦，我身上的泡泡也乱套了！我想靠妳近一点，看看妳在烦什么呀？");
   assert.equal(result.action, null);
 });
@@ -93,6 +93,7 @@ test("step 2603 requests use low reasoning effort to stay inside the mobile repl
 
   assert.equal(requestBodies.length, 1);
   assert.equal(requestBodies[0].reasoning_effort, "low");
+  assert.equal(requestBodies[0].max_tokens, 640);
   assert.deepEqual(Object.keys(requestBodies[0].response_format.json_schema.schema.properties), ["reply", "turnKind", "bodyState"]);
   assert.equal(requestBodies[0].messages[0].content.includes("system prompt"), false);
 });

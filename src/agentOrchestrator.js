@@ -30,6 +30,7 @@ async function callStructuredModel({
   schema,
   schemaName,
   temperature,
+  maxTokens,
   fetchImpl,
   signal,
 }) {
@@ -47,6 +48,9 @@ async function callStructuredModel({
     },
     messages: [{ role: "system", content: system }, ...messages],
   };
+  if (Number.isInteger(maxTokens) && maxTokens > 0) {
+    requestBody.max_tokens = maxTokens;
+  }
   if (apiModel.includes("2603")) {
     requestBody.reasoning_effort = "low";
   }
@@ -273,6 +277,7 @@ async function fastCompanionTurn({
     schema: FAST_COMPANION_SCHEMA,
     schemaName: "menstrual_baby_fast_response",
     temperature: 0.2,
+    maxTokens: 640,
     fetchImpl,
     signal,
   });
@@ -348,6 +353,7 @@ export async function orchestrateAgentTurn({
     schema: AGENT_PLAN_SCHEMA,
     schemaName: "menstrual_baby_plan",
     temperature: 0.12,
+    maxTokens: 1400,
     fetchImpl,
     signal,
   });
@@ -396,6 +402,7 @@ export async function orchestrateAgentTurn({
     schema: composerSchemaForTurn(plan.turnKind),
     schemaName: "menstrual_baby_compose",
     temperature: 0.38,
+    maxTokens: 800,
     fetchImpl,
     signal,
   });
