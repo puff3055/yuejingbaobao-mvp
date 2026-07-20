@@ -73,6 +73,49 @@ test("a successful turn always uses a hidden planner before the user-facing comp
   assert.equal(result.action, null);
 });
 
+test("step 2603 requests use low reasoning effort to stay inside the mobile reply budget", async () => {
+  const requestBodies = [];
+  const fetchImpl = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requestBodies.push(body);
+    return providerResponse({
+      reply: "听到妳说烦，我身上的泡泡也乱套了！我想靠妳近一点，看看妳在烦什么呀？",
+      turnKind: "question",
+      confirmedFactsCandidate: facts("我好烦"),
+      missingField: "current_state_detail",
+      action: null,
+      memoryDraft: { shouldOffer: false, summary: null, fields: [] },
+      knowledgeCard: null,
+      risk: { level: "none", reason: null },
+      visualState: { interaction: "responding", body: "unsettled", basis: [] },
+    });
+  };
+
+  await orchestrateAgentTurn(input({
+    apiModel: "step-3.5-flash-2603",
+    context: { fastCompanionAllowed: true },
+    fetchImpl,
+  }));
+
+  assert.equal(requestBodies.length, 1);
+  assert.equal(requestBodies[0].reasoning_effort, "low");
+});
+
+test("non-2603 models keep the existing request body", async () => {
+  const requestBodies = [];
+  const fetchImpl = async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requestBodies.push(body);
+    const name = body.response_format.json_schema.name;
+    if (name === "menstrual_baby_plan") return providerResponse(plan("我好烦"));
+    return providerResponse({ reply: "听到妳说烦，我身上的泡泡也乱套了！我想靠妳近一点，看看妳在烦什么呀？", knowledgeCard: null });
+  };
+
+  await orchestrateAgentTurn(input({ fetchImpl }));
+
+  assert.equal(requestBodies.every((body) => !Object.hasOwn(body, "reasoning_effort")), true);
+});
+
 test("a planner schema failure closes the whole turn before composing", async () => {
   let calls = 0;
   const fetchImpl = async () => {

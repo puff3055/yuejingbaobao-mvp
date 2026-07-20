@@ -33,23 +33,27 @@ async function callStructuredModel({
   fetchImpl,
   signal,
 }) {
+  const requestBody = {
+    model: apiModel,
+    temperature,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: schemaName,
+        description: schemaName === "menstrual_baby_plan" ? "月经宝宝本轮不可见计划" : "月经宝宝本轮用户可见回复",
+        strict: true,
+        schema,
+      },
+    },
+    messages: [{ role: "system", content: system }, ...messages],
+  };
+  if (apiModel.includes("2603")) {
+    requestBody.reasoning_effort = "low";
+  }
   const response = await fetchImpl(`${apiBase}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: apiModel,
-      temperature,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: schemaName,
-          description: schemaName === "menstrual_baby_plan" ? "月经宝宝本轮不可见计划" : "月经宝宝本轮用户可见回复",
-          strict: true,
-          schema,
-        },
-      },
-      messages: [{ role: "system", content: system }, ...messages],
-    }),
+    body: JSON.stringify(requestBody),
     signal,
   });
   if (!response.ok) throw new AgentPipelineError("agent_provider_error", { stage: schemaName });
