@@ -18,6 +18,7 @@ test("keeps free text and natural-language Agent replies in the core loop", () =
   assert.ok(appSource.includes("本轮没有生成回复"));
   assert.ok(appSource.includes("系统状态 · 不是宝宝回复"));
   assert.ok(agentSource.includes('fetch("/api/agent"'));
+  assert.ok(serverSource.includes('setDefaultResultOrder("ipv4first")'));
   assert.ok(agentSource.includes("throw new AgentRequestError(\"agent_not_authorized\")"));
   assert.equal(agentSource.includes("return fallback"), false);
   assert.equal(agentSource.includes("设备里先接住"), false);

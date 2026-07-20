@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { setDefaultResultOrder } from "node:dns";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { orchestrateAgentTurn, AgentPipelineError } from "./src/agentOrchestrator.js";
@@ -17,6 +18,11 @@ const apiKey = process.env.AGENT_API_KEY || "";
 const searchEndpoint = process.env.AGENT_SEARCH_URL || (apiBase ? `${apiBase}/search` : "");
 const configured = Boolean(apiBase && apiModel && apiKey);
 let knowledgeCache = null;
+
+// The production cluster has IPv4 egress but may still receive an IPv6 DNS
+// answer first. Prefer IPv4 so an otherwise healthy Agent request is not
+// reported as unavailable merely because that route cannot leave the cluster.
+setDefaultResultOrder("ipv4first");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
