@@ -200,8 +200,8 @@ function shouldUseFastCompanionTurn({ message, history, memories, context }) {
   const text = message.trim();
   if (history.length || memories.length) return false;
   if ([...text].length > 80) return false;
-  if (/[？?]|为什么|怎么办|怎么缓解|原因|资料|来源|文献|研究|知识|痛经|小腹痛|腹痛|出血|血量|发烧|呕吐|晕|怀孕|绝经/.test(text)) return false;
-  return /烦|累|疲惫|难受|不舒服|焦虑|烦躁|郁闷|崩溃|不想动|低落/.test(text);
+  if (/为什么|怎么办|怎么缓解|原因|资料|来源|文献|研究|知识/.test(text)) return false;
+  return /烦|累|疲惫|难受|不舒服|焦虑|烦躁|郁闷|崩溃|不想动|低落|痛|疼|妳是谁|你是谁|像\s*GPT|像GPT|月经宝宝/.test(text);
 }
 
 async function fastCompanionTurn({
@@ -227,7 +227,14 @@ async function fastCompanionTurn({
     fetchImpl,
     signal,
   });
-  const validation = validateAgentResponse(result, {
+  const canonicalResult = {
+    ...result,
+    confirmedFactsCandidate: canonicalizeFacts(result.confirmedFactsCandidate, message.trim(), []),
+    memoryDraft: { shouldOffer: false, summary: null, fields: [] },
+    action: null,
+    knowledgeCard: null,
+  };
+  const validation = validateAgentResponse(canonicalResult, {
     actionIds: [],
     blockedActionIds: [],
     sourceUrls: [],
@@ -240,7 +247,7 @@ async function fastCompanionTurn({
       validationErrors: validation.errors,
     });
   }
-  return result;
+  return canonicalResult;
 }
 
 export async function orchestrateAgentTurn({
