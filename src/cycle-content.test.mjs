@@ -67,14 +67,16 @@ test("uses the owner-selected cycle language and a custom start/end-date editor"
 
 test("keeps body and rhythm recording together in the cycle screen", () => {
   assert.ok(appSource.includes("记录今天的节律"));
-  assert.ok(appSource.includes("点点身体位置"));
+  assert.ok(appSource.includes("点点身体"));
   assert.ok(appSource.includes("onBodyRecord={openBodyMap}"));
   assert.equal(appSource.includes("不想打字，点点身体"), false);
 });
 
-test("shows research context and personal rhythm together instead of hiding either behind tabs", () => {
-  assert.ok(appSource.includes("这个位置，研究能告诉我什么"));
-  assert.ok(appSource.includes("我的记录正在形成怎样的线索"));
+test("keeps personal records primary and the research panorama as a secondary layer", () => {
+  assert.ok(appSource.includes("我的周期日历"));
+  assert.ok(appSource.includes("按周期日查看我的节律"));
+  assert.ok(appSource.includes("看看这个阶段身体可能正在发生什么"));
+  assert.ok(appSource.indexOf("<PersonalCycleCalendar") < appSource.indexOf("<CyclePositionCard"));
   assert.equal(appSource.includes('activeView === "research"'), false);
   assert.equal(appSource.includes('activeView === "personal"'), false);
 });

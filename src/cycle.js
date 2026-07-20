@@ -127,13 +127,23 @@ export function getCycleMoment(store) {
 
 export function upsertRhythmLog(logs, draft, now = new Date(), idFactory = () => `rhythm-${Date.now()}`) {
   const current = Array.isArray(logs) ? logs : [];
+  const draftId = draft.id || idFactory();
+  const existing = current.find((item) => item.id === draftId) || null;
+  const missingness = { ...(existing?.missingness || {}), ...(draft.missingness || {}) };
+  ["sleep", "pain", "energy", "mood", "note"].forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(draft, key)) return;
+    if (existing && draft[key] === existing[key] && draft.missingness?.[key]) return;
+    if (!existing && draft.missingness?.[key]) return;
+    missingness[key] = draft[key] === null || draft[key] === undefined || draft[key] === "" ? "not_recorded" : "recorded";
+  });
   const clean = {
     ...draft,
-    id: draft.id || idFactory(),
+    id: draftId,
     recordedAt: draft.recordedAt || now.toISOString(),
     updatedAt: now.toISOString(),
     cycleDay: Number.isFinite(Number(draft.cycleDay)) && Number(draft.cycleDay) > 0 ? Number(draft.cycleDay) : null,
     note: typeof draft.note === "string" ? draft.note.trim().slice(0, 80) : "",
+    missingness,
   };
   const index = current.findIndex((item) => item.id === clean.id);
   if (index < 0) return [clean, ...current];

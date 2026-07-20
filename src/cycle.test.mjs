@@ -43,8 +43,12 @@ test("creates and edits a rhythm log without duplicating it", () => {
   const created = upsertRhythmLog([], { cycleDay: 2, sleep: "没睡够", pain: "有一点" }, now, () => "rhythm-1");
   assert.equal(created.length, 1);
   assert.equal(created[0].id, "rhythm-1");
+  assert.equal(created[0].missingness.sleep, "recorded");
   const edited = upsertRhythmLog(created, { ...created[0], pain: "很影响我" }, new Date("2026-07-19T09:00:00.000Z"));
   assert.equal(edited.length, 1);
   assert.equal(edited[0].pain, "很影响我");
   assert.equal(edited[0].sleep, "没睡够");
+  const cleared = upsertRhythmLog(edited, { ...edited[0], pain: null }, new Date("2026-07-19T10:00:00.000Z"));
+  assert.equal(cleared[0].missingness.pain, "not_recorded");
+  assert.equal(cleared[0].missingness.sleep, "recorded");
 });

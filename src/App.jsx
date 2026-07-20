@@ -54,6 +54,7 @@ import { AgentRequestError, fetchAgentStatus, requestAgentReply } from "./agentC
 import { getAgentErrorCopy } from "./agentProtocol.js";
 import { deriveCycleDayFromStart, getCycleMoment, localDateValue, upsertRhythmLog } from "./cycle.js";
 import { buildPublicPracticeClusters, normalizeMenstrualLanguage, PROFESSIONAL_CATEGORIES, prepareProfessionalCards } from "./knowledge.js";
+import { buildClinicianSummary, calendarTone, deleteMomentStore, momentsForDate, selectMoments, updateMomentStore } from "./moments.js";
 
 const STORAGE_KEY = "yuejing-baby-complete-universe-v2";
 
@@ -321,7 +322,7 @@ export function App() {
             <GiftSeaScreen store={store} setStore={setStore} showMoment={showMoment} />
           )}
           {screen === "journey" && (
-            <JourneyScreen store={store} setStore={setStore} showMoment={showMoment} replayOnboarding={() => setOnboardingOpen(true)} />
+            <JourneyScreen store={store} setStore={setStore} showMoment={showMoment} goTo={setScreen} replayOnboarding={() => setOnboardingOpen(true)} />
           )}
         </main>
         <BottomNav screen={screen} setScreen={setScreen} />
@@ -529,7 +530,7 @@ function PrivacyRow({ icon: Icon, title, copy, checked, onChange = () => {}, dis
 }
 
 function AppHeader({ screen, store, onBell }) {
-  const titles = { nest: "小窝", cycle: "她周期全景图", knowledge: "知识海", gifts: "宝宝广场", journey: "我的" };
+  const titles = { nest: "小窝", cycle: "我的周期", knowledge: "知识海", gifts: "宝宝广场", journey: "我的" };
   return <header className="app-header"><div className="brand-mark"><Moon weight="fill" /><span>月经宝宝</span></div><div className="header-center">{titles[screen]}</div><button className="icon-button" onClick={onBell} aria-label="查看消息"><Bell /><span className="notification-dot" /></button></header>;
 }
 
@@ -1035,64 +1036,201 @@ function CycleScreen({ store, setStore, goTo, openBodyMap }) {
   const [positionOpen, setPositionOpen] = useState(false);
   const [rhythmOpen, setRhythmOpen] = useState(false);
   const [editingRhythm, setEditingRhythm] = useState(null);
+  const [rhythmDate, setRhythmDate] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(null);
   const cycleMoment = getCycleMoment(store);
   const hasPosition = cycleMoment.available;
   const showCursor = hasPosition && cycleMoment.withinPanorama;
   const cursor = `${Math.min(97, Math.max(2, ((store.cycleDay - 1) / 29) * 100))}%`;
   const cursorEdge = store.cycleDay <= 4 ? "edge-left" : store.cycleDay >= 27 ? "edge-right" : "";
   const latestRhythm = store.rhythmLogs?.[0] || null;
-  const openRhythm = (log = null) => {
+  const moments = useMemo(() => selectMoments(store), [store]);
+  useEffect(() => {
+    if (!store.calendarFocusDate) return;
+    setSelectedDate(store.calendarFocusDate);
+    setStore((current) => ({ ...current, calendarFocusDate: null }));
+  }, [store.calendarFocusDate, setStore]);
+  const openRhythm = (log = null, date = null) => {
     setEditingRhythm(log);
+    setRhythmDate(date || (log?.recordedAt ? localDateValue(new Date(log.recordedAt)) : null));
     setRhythmOpen(true);
   };
   const saveRhythm = (draftLog) => {
     setStore((current) => ({ ...current, rhythmLogs: upsertRhythmLog(current.rhythmLogs, draftLog) }));
     setRhythmOpen(false);
     setEditingRhythm(null);
+    setRhythmDate(null);
   };
   const deleteRhythm = (logId) => {
     setStore((current) => ({ ...current, rhythmLogs: (current.rhythmLogs || []).filter((log) => log.id !== logId) }));
     setRhythmOpen(false);
     setEditingRhythm(null);
+    setRhythmDate(null);
+  };
+  const openClinicianKit = () => {
+    setStore((current) => ({ ...current, journeySection: "report" }));
+    goTo("journey");
   };
   const portalTarget = document.querySelector(".mobile-prototype");
   return (
     <section className="page cycle-page">
-      <p className="page-intro-line">同一个时间点，看见我的身体正在如何协同</p>
-      <CyclePositionCard moment={cycleMoment} store={store} latestRhythm={latestRhythm} onEditPosition={() => setPositionOpen(true)} onRecord={() => openRhythm()} onBodyRecord={openBodyMap} />
-      <div className="timeline-card">
-        <div className="timeline-intro"><span>身体协同示意</span><small>每个人的周期长度与排卵时点都会不同</small></div>
-        <div className="cycle-axis">
-          <div className="day-ruler" aria-label="周期教学坐标，从第一天到第三十天">{[1,5,10,15,20,25,30].map((day) => <span key={day} style={{ left: `${((day - 1) / 29) * 100}%` }}>D{day}</span>)}</div>
-          <div className="dual-phases">
-            <div className="phase-row"><small>卵巢周期</small><div className="phase-band"><span className="follicular">卵泡期</span><span className="ovulation">排卵事件<br />不确定窗口</span><span className="luteal">黄体期</span></div></div>
-            <div className="phase-row"><small>内膜周期</small><div className="phase-band"><span className="menses">月经 / 脱落</span><span className="growth">增殖期</span><span className="secretory">分泌期</span></div></div>
+      <p className="page-intro-line">先看妳真实经历过什么，再去理解身体可能正在发生什么。</p>
+      <PersonalCycleCalendar moments={moments} store={store} onSelectDate={setSelectedDate} onAdd={(date) => openRhythm(null, date)} onBodyRecord={openBodyMap} onClinicianKit={openClinicianKit} />
+      <CyclePositionCard moment={cycleMoment} store={store} latestRhythm={latestRhythm} onEditPosition={() => setPositionOpen(true)} />
+      <details className="cycle-secondary-drawer">
+        <summary><Waves /><span><strong>按周期日查看我的节律</strong><small>只排列妳亲自留下的点；缺失不连线</small></span><CaretDown /></summary>
+        <div className="cycle-secondary-content"><PersonalRhythm store={store} onAdd={() => openRhythm()} onEdit={openRhythm} onLocate={() => setPositionOpen(true)} /></div>
+      </details>
+      <details className="cycle-understand-drawer">
+        <summary><BookOpenText /><span><strong>看看这个阶段身体可能正在发生什么</strong><small>典型教学模型，与妳的个人记录分开</small></span><CaretDown /></summary>
+        <div className="cycle-understand-content">
+          <div className="timeline-card">
+            <div className="timeline-intro"><div><p className="eyebrow">教学模型</p><h2>她周期全景图</h2><span>同一个时间点，看见我的身体正在如何协同</span></div><small>每个人的周期长度与排卵时点都会不同</small></div>
+            <div className="cycle-axis">
+              <div className="day-ruler" aria-label="周期教学坐标，从第一天到第三十天">{[1,5,10,15,20,25,30].map((day) => <span key={day} style={{ left: `${((day - 1) / 29) * 100}%` }}>D{day}</span>)}</div>
+              <div className="dual-phases">
+                <div className="phase-row"><small>卵巢周期</small><div className="phase-band"><span className="follicular">卵泡期</span><span className="ovulation">排卵事件<br />不确定窗口</span><span className="luteal">黄体期</span></div></div>
+                <div className="phase-row"><small>内膜周期</small><div className="phase-band"><span className="menses">月经 / 脱落</span><span className="growth">增殖期</span><span className="secretory">分泌期</span></div></div>
+              </div>
+              {showCursor && <div className={`today-line ${cursorEdge}`} style={{ left: cursor }}><span><Moon weight="fill" />我的 D{store.cycleDay}</span></div>}
+              {CYCLE_TRACKS.map((track) => <SystemTrack key={track.id} {...track} />)}
+            </div>
+            <div className="landscape-boundary"><Info weight="fill" /><span>这里呈现生理事件的相对顺序；妳的日期记录不能测出排卵、内膜厚度或激素水平。</span></div>
           </div>
-          {showCursor && <div className={`today-line ${cursorEdge}`} style={{ left: cursor }}><span><Moon weight="fill" />我的 D{store.cycleDay}</span></div>}
-          {CYCLE_TRACKS.map((track) => <SystemTrack key={track.id} {...track} />)}
-        </div>
-        <div className="landscape-boundary"><Info weight="fill" /><span>这里呈现生理事件的相对顺序；妳的日期记录不能测出排卵、内膜厚度或激素水平。</span></div>
-      </div>
-      <div className="cycle-data-section-heading"><div><p className="eyebrow">研究参考</p><h2>这个位置，研究能告诉我什么</h2></div><span>群体资料</span></div>
-      <ResearchClimate moment={cycleMoment} cycleDay={store.cycleDay} />
-      <div className="cycle-data-section-heading personal"><div><p className="eyebrow">我的节律</p><h2>我的记录正在形成怎样的线索</h2></div><span>只用授权数据</span></div>
-      <PersonalRhythm store={store} onAdd={() => openRhythm()} onEdit={openRhythm} onLocate={() => setPositionOpen(true)} />
-      <details className="cycle-source-drawer">
-        <summary><ShieldCheck /><span><strong>严谨性审查与完整来源</strong><small>权威来源已逐项映射；成品妇产科专家签字仍待完成</small></span><CaretDown /></summary>
-        <div className="cycle-source-content">
-          <p>已核对：两套周期不互斥、排卵是可变事件、内膜脱落与修复可重叠、分泌物存在其他解释、日历不生成个人器官状态。</p>
-          <div className="cycle-source-list">{Object.entries(CYCLE_SOURCES).map(([id, source]) => <a key={id} href={source.url} target="_blank" rel="noreferrer">{source.label}<CaretRight /></a>)}</div>
-          <p className="audit-limit"><WarningCircle /> 这仍是黑客松教学原型，不是诊断工具，也尚未完成妇产科、内分泌和用户理解测试。</p>
-          <button className="secondary-button" onClick={() => goTo("knowledge")}>去知识海继续核对说法</button>
+          <ResearchClimate moment={cycleMoment} cycleDay={store.cycleDay} />
+          <details className="cycle-source-drawer">
+            <summary><ShieldCheck /><span><strong>严谨性审查与完整来源</strong><small>权威来源已逐项映射；成品妇产科专家签字仍待完成</small></span><CaretDown /></summary>
+            <div className="cycle-source-content">
+              <p>已核对：两套周期不互斥、排卵是可变事件、内膜脱落与修复可重叠、分泌物存在其他解释、日历不生成个人器官状态。</p>
+              <div className="cycle-source-list">{Object.entries(CYCLE_SOURCES).map(([id, source]) => <a key={id} href={source.url} target="_blank" rel="noreferrer">{source.label}<CaretRight /></a>)}</div>
+              <p className="audit-limit"><WarningCircle /> 这仍是黑客松教学原型，不是诊断工具，也尚未完成妇产科、内分泌和用户理解测试。</p>
+              <button className="secondary-button" onClick={() => goTo("knowledge")}>去知识海继续核对说法</button>
+            </div>
+          </details>
         </div>
       </details>
       {positionOpen && portalTarget && createPortal(<CyclePositionEditor store={store} onClose={() => setPositionOpen(false)} onSave={({ cycleDay, cycleStartDate, cycleEndDate, cycleOngoing }) => { setStore((current) => ({ ...current, cycleDay, cycleStartDate, cycleEndDate, cycleOngoing, cycleAnchorConfirmed: true, cycleUpdatedAt: new Date().toISOString() })); setPositionOpen(false); }} onClear={() => { setStore((current) => ({ ...current, cycleAnchorConfirmed: false, cycleStartDate: "", cycleEndDate: "", cycleOngoing: false, cycleUpdatedAt: new Date().toISOString() })); setPositionOpen(false); }} />, portalTarget)}
-      {rhythmOpen && portalTarget && createPortal(<RhythmLogModal store={store} existing={editingRhythm} onClose={() => { setRhythmOpen(false); setEditingRhythm(null); }} onSave={saveRhythm} onDelete={deleteRhythm} />, portalTarget)}
+      {selectedDate && portalTarget && createPortal(<MomentDaySheet date={selectedDate} moments={momentsForDate(moments, selectedDate)} onClose={() => setSelectedDate(null)} onAdd={() => { setSelectedDate(null); openRhythm(null, selectedDate); }} onEditRhythm={(moment) => { setSelectedDate(null); openRhythm(store.rhythmLogs.find((log) => log.id === moment.sourceId) || null, moment.date); }} onEditPeriod={() => { setSelectedDate(null); setPositionOpen(true); }} onUpdate={(id, patch) => setStore((current) => updateMomentStore(current, id, patch))} onDelete={(id) => setStore((current) => deleteMomentStore(current, id))} />, portalTarget)}
+      {rhythmOpen && portalTarget && createPortal(<RhythmLogModal store={store} existing={editingRhythm} defaultDate={rhythmDate} onClose={() => { setRhythmOpen(false); setEditingRhythm(null); setRhythmDate(null); }} onSave={saveRhythm} onDelete={deleteRhythm} />, portalTarget)}
     </section>
   );
 }
 
-function CyclePositionCard({ moment, store, latestRhythm, onEditPosition, onRecord, onBodyRecord }) {
+const CALENDAR_LAYERS = [
+  ["overview", "概览"],
+  ["period", "月经"],
+  ["pain", "疼痛"],
+  ["sleep", "睡眠"],
+  ["mood", "心情"],
+  ["energy", "精力"],
+];
+
+function PersonalCycleCalendar({ moments, store, onSelectDate, onAdd, onBodyRecord, onClinicianKit }) {
+  const today = localDateValue();
+  const latestDate = moments.find((moment) => moment.date)?.date || today;
+  const [yearPart, monthPart] = latestDate.split("-").map(Number);
+  const [month, setMonth] = useState(() => new Date(yearPart, monthPart - 1, 1));
+  const [layer, setLayer] = useState("overview");
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const firstWeekday = new Date(year, monthIndex, 1).getDay();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const day = index - firstWeekday + 1;
+    return day >= 1 && day <= daysInMonth ? day : null;
+  });
+  const monthPrefix = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+  const monthMoments = moments.filter((moment) => moment.date?.startsWith(monthPrefix));
+  const recordDays = new Set(monthMoments.filter((moment) => moment.sourceType !== "period").map((moment) => moment.date)).size;
+  const periodDays = new Set(monthMoments.filter((moment) => moment.sourceType === "period").map((moment) => moment.date)).size;
+  return (
+    <section className="personal-calendar-card">
+      <header className="personal-calendar-heading"><div><p className="eyebrow">妳确认过的身体旅程</p><h2>我的周期日历</h2><p>点开一天，回看当时发生了什么、做过什么、结果怎样。</p></div><CalendarDots weight="duotone" /></header>
+      <div className="calendar-primary-actions"><button onClick={() => onAdd(today)}><Plus /><span><strong>记录今天</strong><small>想填几个维度都可以</small></span></button><button onClick={onBodyRecord}><PersonArmsSpread /><span><strong>点点身体</strong><small>从位置开始告诉宝宝</small></span></button></div>
+      <div className="calendar-month-nav"><button aria-label="上个月" onClick={() => setMonth(new Date(year, monthIndex - 1, 1))}><CaretRight /></button><div><strong>{year} 年 {monthIndex + 1} 月</strong><small>{periodDays ? `${periodDays} 天确认月经日期` : "本月尚未确认月经日期"} · {recordDays} 天有记录</small></div><button aria-label="下个月" onClick={() => setMonth(new Date(year, monthIndex + 1, 1))}><CaretRight /></button></div>
+      <div className="calendar-layer-tabs" aria-label="切换日历指标">{CALENDAR_LAYERS.map(([id, label]) => <button key={id} className={layer === id ? "active" : ""} onClick={() => setLayer(id)}>{label}</button>)}</div>
+      <div className="personal-calendar-weekdays">{["日", "一", "二", "三", "四", "五", "六"].map((day) => <span key={day}>{day}</span>)}</div>
+      <div className="personal-calendar-grid">{cells.map((day, index) => {
+        if (!day) return <span className="calendar-empty-cell" key={`empty-${index}`} />;
+        const date = dateValue(year, monthIndex, day);
+        const dayMoments = momentsForDate(moments, date);
+        const tone = calendarTone(dayMoments, layer);
+        const hasPeriod = dayMoments.some((moment) => moment.sourceType === "period");
+        const observationCount = dayMoments.filter((moment) => moment.sourceType !== "period").length;
+        return <button key={date} className={`personal-calendar-day tone-${tone} ${date === today ? "today" : ""}`} onClick={() => onSelectDate(date)} aria-label={`${date}，${hasPeriod ? "确认在月经期，" : ""}${observationCount ? `${observationCount} 条记录` : "没有记录"}`}><span>{day}</span><i>{hasPeriod && <b />}{observationCount > 0 && <em>{observationCount}</em>}</i></button>;
+      })}</div>
+      <div className="calendar-legend"><span><i className="legend-period" />妳确认的月经日期</span><span><i className="legend-record" />妳主动留下的记录</span><span>空白就是未记录</span></div>
+      <button className="clinician-kit-entry" onClick={onClinicianKit}><DownloadSimple /><span><strong>整理一份就医锦囊</strong><small>只汇总妳确认过的记录，不生成诊断</small></span><CaretRight /></button>
+      {!store.cycleAnchorConfirmed && <p className="calendar-position-prompt"><Info /><span>还没有月经日期也可以先记录；之后补上日期，日历会自动重新整理。</span></p>}
+    </section>
+  );
+}
+
+function MomentDaySheet({ date, moments, onClose, onAdd, onEditRhythm, onEditPeriod, onUpdate, onDelete }) {
+  const [editing, setEditing] = useState(null);
+  const toggleEditingZone = (zoneId) => setEditing((current) => {
+    const bodyZones = current.bodyZones.includes(zoneId) ? current.bodyZones.filter((id) => id !== zoneId) : [...current.bodyZones, zoneId];
+    return { ...current, bodyZones, bodyLocations: bodyZones.map((id) => BODY_ZONES.find((zone) => zone.id === id)?.label).filter(Boolean).join("、") };
+  });
+  const startEdit = (moment) => {
+    if (moment.sourceType === "rhythm") return onEditRhythm(moment);
+    if (moment.sourceType === "period") return onEditPeriod();
+    setEditing({
+      id: moment.id,
+      rawText: moment.rawText || "",
+      symptoms: moment.fields.symptoms || "",
+      bodyLocations: moment.fields.bodyLocations || "",
+      bodyZones: [...(moment.fields.bodyZones || [])],
+      functionalImpact: moment.fields.functionalImpact || "",
+      differenceFromUsual: moment.fields.differenceFromUsual || "",
+      currentConstraint: moment.fields.currentConstraint || "",
+      onset: moment.fields.onset || "",
+      cycleContext: moment.fields.cycleContext || "",
+      actionTitle: moment.fields.actionTitle || "",
+      effect: moment.fields.effect || "some",
+      pain: moment.fields.pain || "",
+      mood: moment.fields.mood || "",
+      energy: moment.fields.energy || "",
+      sleep: moment.fields.sleep || "",
+    });
+  };
+  const saveEdit = (event) => {
+    event.preventDefault();
+    if (!editing?.rawText.trim()) return;
+    const analysis = analyzeInput([editing.rawText, editing.symptoms, editing.functionalImpact, editing.currentConstraint].filter(Boolean).join("；"));
+    onUpdate(editing.id, {
+      rawText: editing.rawText.trim(),
+      symptoms: editing.symptoms.trim(),
+      bodyLocations: editing.bodyLocations.trim(),
+      bodyZones: editing.bodyZones,
+      functionalImpact: editing.functionalImpact.trim(),
+      differenceFromUsual: editing.differenceFromUsual.trim(),
+      currentConstraint: editing.currentConstraint.trim(),
+      onset: editing.onset.trim(),
+      cycleContext: editing.cycleContext.trim(),
+      actionTitle: editing.actionTitle.trim(),
+      effect: editing.effect,
+      tags: analysis.tags,
+      tagSource: "derived_from_user_corrected_text",
+      structuredState: { pain: editing.pain || null, mood: editing.mood || null, energy: editing.energy || null, sleep: editing.sleep || null },
+    });
+    setEditing(null);
+  };
+  const deleteMoment = (moment) => {
+    if (!window.confirm("只删除这一条记录，其他日期和记录不会受影响。继续吗？")) return;
+    onDelete(moment.id);
+  };
+  const effectText = (value) => value === "helped" ? "很有帮助" : value === "some" ? "有一点帮助" : value === "none" ? "没有帮助 / 更不舒服" : "没有记录";
+  return <div className="modal-layer moment-day-sheet"><div className="sheet-header"><button className="icon-button" aria-label="关闭这一天的记录" onClick={onClose}><X /></button><div><p className="eyebrow">这一天发生了什么</p><h2>{formatCycleDate(date)}</h2></div><span className="day-record-count">{moments.filter((item) => item.sourceType !== "period").length} 条</span></div><div className="moment-day-content">
+    {editing ? <form className="moment-inline-editor" onSubmit={saveEdit}><div><p className="eyebrow">保存后仍然由妳决定</p><h3>修改这一刻</h3></div><label>当时发生了什么<textarea rows="3" value={editing.rawText} onChange={(event) => setEditing((current) => ({ ...current, rawText: event.target.value }))} /></label><fieldset className="moment-zone-editor"><legend>身体位置</legend><div>{BODY_ZONES.map((zone) => <button type="button" key={zone.id} className={editing.bodyZones.includes(zone.id) ? "active" : ""} onClick={() => toggleEditingZone(zone.id)}>{zone.label}</button>)}</div><label>也可以直接修改文字<input value={editing.bodyLocations} onChange={(event) => setEditing((current) => ({ ...current, bodyLocations: event.target.value }))} placeholder="未记录" /></label></fieldset><div className="moment-edit-grid"><label>身体感受<input value={editing.symptoms} onChange={(event) => setEditing((current) => ({ ...current, symptoms: event.target.value }))} placeholder="未记录" /></label><label>周期背景<input value={editing.cycleContext} onChange={(event) => setEditing((current) => ({ ...current, cycleContext: event.target.value }))} placeholder="未记录" /></label><label>影响了什么<input value={editing.functionalImpact} onChange={(event) => setEditing((current) => ({ ...current, functionalImpact: event.target.value }))} placeholder="未记录" /></label><label>现实限制<input value={editing.currentConstraint} onChange={(event) => setEditing((current) => ({ ...current, currentConstraint: event.target.value }))} placeholder="未记录" /></label><label>什么时候开始<input value={editing.onset} onChange={(event) => setEditing((current) => ({ ...current, onset: event.target.value }))} placeholder="未记录" /></label><label>和平时有什么不同<input value={editing.differenceFromUsual} onChange={(event) => setEditing((current) => ({ ...current, differenceFromUsual: event.target.value }))} placeholder="不知道也可以留空" /></label></div><details className="moment-state-editor"><summary>修改疼痛、睡眠、心情或精力 <CaretDown /></summary><div>{RHYTHM_DIMENSIONS.map(({ key, label, note, options }) => <PlainScale key={key} label={label} note={note} value={editing[key]} options={options} allowClear onChange={(value) => setEditing((current) => ({ ...current, [key]: value }))} />)}</div></details><label>做了什么<input value={editing.actionTitle} onChange={(event) => setEditing((current) => ({ ...current, actionTitle: event.target.value }))} placeholder="未记录" /></label><fieldset><legend>结果</legend><div className="edit-effect-options">{[["helped", "很有帮助"], ["some", "有一点帮助"], ["none", "没有帮助 / 更不舒服"]].map(([id, label]) => <button type="button" key={id} className={editing.effect === id ? "active" : ""} onClick={() => setEditing((current) => ({ ...current, effect: id }))}>{label}</button>)}</div></fieldset><button className="primary-button" disabled={!editing.rawText.trim()}>保存妳的纠正</button><button className="secondary-button" type="button" onClick={() => setEditing(null)}>取消</button></form> : <>
+      <section className="day-sheet-summary"><span>{moments.some((item) => item.sourceType === "period") ? "这一天在妳确认的月经日期内" : "这一天没有确认的月经日期"}</span><p>{moments.length ? "下面按时间保留每一次记录，不会把同一天压成一个结论。" : "这一天还没有记录。空白只表示妳没有填写，不代表什么都没有发生。"}</p></section>
+      <div className="day-moment-list">{moments.map((moment) => <article className={`day-moment-card source-${moment.sourceType}`} key={moment.id}><header><span>{moment.sourceType === "period" ? "月经日期" : moment.sourceType === "episode" ? "宝宝对话确认" : "页面记录"}</span><time>{moment.sourceType === "period" ? `D${moment.cycleDay}` : new Date(moment.occurredAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time></header><h3>{moment.rawText || "没有补充文字"}</h3>{moment.sourceType === "episode" && <dl><dt>身体</dt><dd>{[moment.fields.bodyLocations, moment.fields.symptoms].filter(Boolean).join(" · ") || "未记录"}</dd><dt>影响</dt><dd>{moment.fields.functionalImpact || "未记录"}</dd><dt>背景</dt><dd>{[moment.fields.cycleContext, moment.fields.currentConstraint].filter(Boolean).join(" · ") || "未记录"}</dd><dt>变化</dt><dd>{[moment.fields.onset, moment.fields.differenceFromUsual].filter(Boolean).join(" · ") || "未记录"}</dd><dt>做了</dt><dd>{moment.fields.actionTitle || "未记录"}</dd><dt>结果</dt><dd>{effectText(moment.fields.effect)}</dd></dl>}{moment.sourceType === "rhythm" && <div className="day-rhythm-values">{RHYTHM_DIMENSIONS.map(({ key, label }) => moment.fields[key] ? <span key={key}><small>{label}</small>{moment.fields[key]}</span> : null)}</div>}<footer><button onClick={() => startEdit(moment)}><PencilSimple /> {moment.sourceType === "period" ? "修改日期" : "修改"}</button>{moment.sourceType !== "period" && <button className="delete" onClick={() => deleteMoment(moment)}><Trash /> 删除</button>}</footer></article>)}</div>
+      <button className="primary-button" onClick={onAdd}><Plus /> 记录这一天</button><button className="secondary-button" onClick={onClose}>回到日历</button>
+    </>}
+  </div></div>;
+}
+
+function CyclePositionCard({ moment, store, latestRhythm, onEditPosition }) {
   const canLocate = !["seed", "phoenix"].includes(store.profile.lifeStage);
   const rhythmSummary = latestRhythm
     ? [latestRhythm.sleep, latestRhythm.pain, latestRhythm.energy, latestRhythm.mood].filter(Boolean).join(" · ")
@@ -1117,8 +1255,7 @@ function CyclePositionCard({ moment, store, latestRhythm, onEditPosition, onReco
       )}
       {canLocate && (
         <div className="cycle-position-actions">
-          <div className="cycle-record-buttons"><button onClick={onRecord}><Plus /> 记录今天的节律</button><button onClick={onBodyRecord}><PersonArmsSpread /> 点点身体位置</button></div>
-          <span><strong>妳的真实感受</strong>{rhythmSummary}</span>
+          <span><strong>最近一条真实记录</strong>{rhythmSummary}</span>
         </div>
       )}
       <p className="cycle-position-boundary"><ShieldCheck /> “位置”来自妳确认的日期或周期日；身体感受只来自妳亲自填写的记录。</p>
@@ -1235,11 +1372,11 @@ function PersonalRhythm({ store, onAdd, onEdit, onLocate }) {
   );
 }
 
-function RhythmLogModal({ store, existing, onClose, onSave, onDelete }) {
+function RhythmLogModal({ store, existing, defaultDate = null, onClose, onSave, onDelete }) {
   const [draftLog, setDraftLog] = useState(() => existing ? { ...existing } : {
     id: null,
-    recordedAt: null,
-    cycleDay: store.cycleAnchorConfirmed ? store.cycleDay : null,
+    recordedAt: defaultDate ? new Date(`${defaultDate}T12:00:00`).toISOString() : null,
+    cycleDay: defaultDate && store.cycleStartDate ? deriveCycleDayFromStart(store.cycleStartDate, new Date(`${defaultDate}T12:00:00`)) : store.cycleAnchorConfirmed ? store.cycleDay : null,
     sleep: null,
     pain: null,
     energy: null,
@@ -1252,7 +1389,7 @@ function RhythmLogModal({ store, existing, onClose, onSave, onDelete }) {
     <div className="modal-layer rhythm-log-modal">
       <div className="sheet-header"><button className="icon-button" aria-label="关闭节律记录" onClick={onClose}><X /></button><div><p className="eyebrow">轻轻留下一天</p><h2>{existing ? "修改这次节律" : "记录今天的节律"}</h2></div><span className="rhythm-day-chip">{draftLog.cycleDay ? `D${draftLog.cycleDay}` : "未定位"}</span></div>
       <div className="rhythm-log-content">
-        <section className="rhythm-log-intro"><Moon weight="fill" /><div><strong>想填几个就填几个</strong><p>只选妳此刻有感觉的维度。它们都是主观自述，不是医学评分，也不会自动归因给周期。</p></div></section>
+        <section className="rhythm-log-intro"><Moon weight="fill" /><div><strong>{defaultDate && defaultDate !== localDateValue() ? `补记 ${formatCycleDate(defaultDate)}` : "想填几个就填几个"}</strong><p>只选妳有印象的维度。它们都是主观自述，不是医学评分，也不会自动归因给周期。</p></div></section>
         <div className="rhythm-scales">{RHYTHM_DIMENSIONS.map(({ key, label, note, options }) => <PlainScale key={key} label={label} note={note} value={draftLog[key]} options={options} allowClear onChange={(value) => setDraftLog((current) => ({ ...current, [key]: value }))} />)}</div>
         <label className="rhythm-note-field">还想留下一句话（可选）<textarea maxLength="80" rows="3" placeholder="例如：昨晚赶工到很晚；今天还要出门……" value={draftLog.note} onChange={(event) => setDraftLog((current) => ({ ...current, note: event.target.value }))} /><small>{draftLog.note.length}/80</small></label>
         {!store.privacy.localMemory && <div className="boundary-note"><Lock /> 妳关闭了长期周期记忆，所以这条记录不会被保存。可以到“我的 → 隐私”重新开启。</div>}
@@ -1348,7 +1485,7 @@ function Inventory({ store, setStore, showMoment }) {
   return <div className="inventory"><div className="section-heading"><div><p className="eyebrow">月潮生日准备</p><h3>我准备的照护礼物</h3></div><Package /></div>{prepared.map((gift) => <article className="inventory-card" key={gift.id}><Gift weight="fill" /><div><small>{gift.kind}</small><h3>{gift.title}</h3><p>{gift.caution}</p></div></article>)}<div className="section-heading incoming-heading"><div><p className="eyebrow">收到的匿名经验礼物</p><h3>{store.receivedGifts.length} 份等待妳决定</h3></div><EnvelopeOpen /></div>{store.receivedGifts.length ? store.receivedGifts.map((gift) => <article className="incoming-card" key={gift.id}><div><small>来自 {BABY_FRIENDS.find((f) => f.id === gift.from)?.name || "匿名宝宝"}</small><h3>{gift.title}</h3><p>公开经验礼物 · 尚未成为妳的个人结论</p></div><button disabled={gift.status === "opened"} onClick={() => openGift(gift)}>{gift.status === "opened" ? "已查看" : "查看内容"}</button></article>) : <div className="empty-card">去礼物区派宝宝接一份匿名经验礼物吧。妳随时可以忽略，不会失去成长。</div>}</div>;
 }
 
-function JourneyScreen({ store, setStore, showMoment, replayOnboarding }) {
+function JourneyScreen({ store, setStore, showMoment, goTo, replayOnboarding }) {
   const [section, setSection] = useState(() => store.journeySection || "growth");
   const chooseSection = (nextSection) => {
     setSection(nextSection);
@@ -1363,7 +1500,7 @@ function JourneyScreen({ store, setStore, showMoment, replayOnboarding }) {
       <button className="onboarding-replay-card" onClick={replayOnboarding}><span className="replay-seed"><img src="/assets/lifecycle/moon-seed.png" alt="月之种子在月光贝壳中" /></span><span><small>妳们最初相遇的故事</small><strong>重看月之种子来到小窝的过程</strong><em>已有记录会保留，妳也可以重新调整陪伴偏好</em></span><CaretRight /></button>
       <div className="segmented-control"><button className={section === "growth" ? "active" : ""} onClick={() => chooseSection("growth")}>宝宝</button><button className={section === "report" ? "active" : ""} onClick={() => chooseSection("report")}>照护记录</button><button className={section === "privacy" ? "active" : ""} onClick={() => chooseSection("privacy")}>隐私</button></div>
       {section === "growth" && <Lifecycle store={store} setStore={setStore} showMoment={showMoment} />}
-      {section === "report" && <Report store={store} setStore={setStore} showMoment={showMoment} />}
+      {section === "report" && <Report store={store} setStore={setStore} showMoment={showMoment} goTo={goTo} />}
       {section === "privacy" && <div className="privacy-panel"><PrivacyRow icon={Lock} title="在这台设备保存记录与设置" copy="周期、身体记录和偏好；妳可以导出或清除" checked disabled /><PrivacyRow icon={Sparkle} title="允许宝宝形成长期记忆" copy="保存妳确认过的处境、行动和结果；关闭后不再新增" checked={store.privacy.localMemory} onChange={(v) => setStore((s) => ({ ...s, privacy: { ...s.privacy, localMemory: v } }))} /><PrivacyRow icon={ChatCircleDots} title="允许宝宝在需要时联网回应" copy="开启后，只有妳主动发送的当次消息会交给在线智能服务生成回复；默认关闭" checked={store.privacy.agentCloudConsent} onChange={(v) => setStore((s) => ({ ...s, privacy: { ...s.privacy, agentCloudConsent: v }, profile: { ...s.profile, agentCloudConsent: v } }))} /><PrivacyRow icon={EnvelopeOpen} title="允许妳主动制作匿名经验礼物" copy="每一份仍需再次确认；默认不分享" checked={store.privacy.communityConsent} onChange={(v) => setStore((s) => ({ ...s, privacy: { ...s.privacy, communityConsent: v } }))} /><button className="settings-button" onClick={exportData}><DownloadSimple /> 导出我的本地数据 <CaretRight /></button><button className="settings-button danger" onClick={reset}><Trash /> 清除完整宇宙版数据 <CaretRight /></button><div className="boundary-note"><ShieldCheck /> 宝宝社区里的示例动态会与妳的私人记录分开；只有妳逐次确认的礼物才会进入分享流程。</div></div>}
     </section>
   );
@@ -1376,10 +1513,23 @@ function Lifecycle({ store, setStore, showMoment }) {
   return <div className="lifecycle"><div className="lifecycle-intro"><p className="eyebrow">同一份生命经验，长成不同的样子</p><h2>现在先好好认识陪着妳的它</h2><p>月之种子是一次温柔回望，血月凤凰是一段有力量的展望。</p></div>{ordered.map((stage) => <article className={`lifecycle-card stage-${stage.id} ${stage.id === stageForProfile ? "current" : ""}`} key={stage.id}><div className="lifecycle-visual"><img src={stage.id === "seed" ? "/assets/lifecycle/moon-seed.png" : stage.id === "phoenix" ? "/assets/lifecycle/blood-moon-phoenix.png" : "/assets/moon-sea-hero.png"} alt={stage.title} /></div><div><div className="lifecycle-meta"><small>{stage.subtitle}</small><b>{stageStatus(stage.id)}</b></div><h3>{stage.title}</h3><p>{stage.personality}</p>{stage.id === stageForProfile && <div className="current-stage-data"><span><strong>{store.conversationCount || 0}</strong> 次认真对话</span><span><strong>{store.episodes.length}</strong> 次照护结果</span><span><strong>{store.sentGifts.length + store.receivedGifts.length}</strong> 份爱的传递</span></div>}</div></article>)}</div>;
 }
 
-function Report({ store, setStore, showMoment }) {
+function Report({ store, setStore, showMoment, goTo }) {
   const [filter, setFilter] = useState("all");
   const [shareDraft, setShareDraft] = useState(null);
   const [editingEpisode, setEditingEpisode] = useState(null);
+  const [clinicianOpen, setClinicianOpen] = useState(false);
+  const clinicianSummary = useMemo(() => buildClinicianSummary(store), [store]);
+  const editClinicianSource = (momentId, date) => {
+    if (momentId?.startsWith("episode:")) {
+      const episode = store.episodes.find((item) => `episode:${item.id}` === momentId);
+      if (episode) beginEpisodeEdit(episode);
+      setClinicianOpen(false);
+      return;
+    }
+    setStore((current) => ({ ...current, calendarFocusDate: date || current.cycleStartDate || localDateValue() }));
+    setClinicianOpen(false);
+    goTo("cycle");
+  };
   const effectCounts = {
     helped: store.episodes.filter((episode) => episode.effect === "helped").length,
     some: store.episodes.filter((episode) => episode.effect === "some").length,
@@ -1413,11 +1563,7 @@ function Report({ store, setStore, showMoment }) {
     if (!editingEpisode?.rawText.trim()) return;
     const confirmedText = [editingEpisode.rawText, editingEpisode.symptoms, editingEpisode.functionalImpact, editingEpisode.currentConstraint].filter(Boolean).join("；");
     const confirmedAnalysis = analyzeInput(confirmedText);
-    const optionalFields = ["cycleContext", "symptoms", "bodyLocations", "onset", "functionalImpact", "differenceFromUsual", "currentConstraint"];
-    setStore((current) => ({
-      ...current,
-      episodes: current.episodes.map((episode) => episode.id === editingEpisode.id ? {
-        ...episode,
+    setStore((current) => updateMomentStore(current, `episode:${editingEpisode.id}`, {
         rawText: editingEpisode.rawText.trim(),
         tags: confirmedAnalysis.tags,
         tagSource: "derived_from_user_corrected_text",
@@ -1428,19 +1574,15 @@ function Report({ store, setStore, showMoment }) {
         differenceFromUsual: editingEpisode.differenceFromUsual.trim(),
         currentConstraint: editingEpisode.currentConstraint.trim(),
         cycleContext: editingEpisode.cycleContext.trim(),
-        actionTitle: editingEpisode.actionTitle.trim() || episode.actionTitle,
+        actionTitle: editingEpisode.actionTitle.trim(),
         effect: editingEpisode.effect,
         bodyState: confirmedBodyState(editingEpisode),
-        updatedAt: new Date().toISOString(),
         provenance: {
-          ...(episode.provenance || {}),
           situation: "user_corrected_after_save",
           optionalFields: "user_corrected_or_not_recorded",
           outcome: "user_corrected_feedback",
         },
-        missingness: Object.fromEntries(optionalFields.map((key) => [key, editingEpisode[key]?.trim() ? "recorded" : "not_recorded"])),
-      } : episode),
-    }));
+      }));
     setEditingEpisode(null);
     showMoment("care", "宝宝记住了妳的纠正", "旧的内容已经被替换。下一次回忆和行动排序会读取妳刚刚确认的新版本。", 0);
   };
@@ -1454,11 +1596,35 @@ function Report({ store, setStore, showMoment }) {
   };
   const effectLabel = (effect) => effect === "helped" ? "很有帮助" : effect === "some" ? "有一点帮助" : "没有帮助或更不舒服";
   return <div className="report-panel">
-    <section className="report-hero"><p className="eyebrow">妳和宝宝共同确认过的真实结果</p><h2>{store.episodes.length ? `已经完成 ${store.episodes.length} 次自我照护行动` : "第一条照护记录会从真实反馈开始"}</h2><div className="report-stats"><div><strong>{effectCounts.helped}</strong><small>很有帮助</small></div><div><strong>{effectCounts.some}</strong><small>有一点帮助</small></div><div><strong>{effectCounts.none}</strong><small>没有帮助</small></div></div></section>
+    <section className="report-hero"><p className="eyebrow">妳和宝宝共同确认过的真实结果</p><h2>{store.episodes.length ? `已经完成 ${store.episodes.length} 次自我照护行动` : "第一条照护记录会从真实反馈开始"}</h2><div className="report-stats"><div><strong>{effectCounts.helped}</strong><small>很有帮助</small></div><div><strong>{effectCounts.some}</strong><small>有一点帮助</small></div><div><strong>{effectCounts.none}</strong><small>没有帮助</small></div></div><button className="report-clinician-button" onClick={() => setClinicianOpen(true)}><DownloadSimple /><span><strong>生成就医锦囊</strong><small>把确认记录整理成一页沟通材料</small></span><CaretRight /></button></section>
     {editingEpisode && <form className="record-edit-card" onSubmit={saveEpisodeEdit}><div className="record-edit-heading"><div><p className="eyebrow">这份身体经验始终由妳决定</p><h3>修改这一条照护记录</h3></div><button type="button" aria-label="关闭记录修改" onClick={() => setEditingEpisode(null)}><X /></button></div><label>当时发生了什么<textarea rows="3" value={editingEpisode.rawText} onChange={(event) => setEditingEpisode((current) => ({ ...current, rawText: event.target.value }))} /></label><div className="record-edit-grid"><label>身体感受<input value={editingEpisode.symptoms} onChange={(event) => setEditingEpisode((current) => ({ ...current, symptoms: event.target.value }))} placeholder="没有记录" /></label><label>身体位置<input value={editingEpisode.bodyLocations} onChange={(event) => setEditingEpisode((current) => ({ ...current, bodyLocations: event.target.value }))} placeholder="没有记录" /></label><label>影响了什么<input value={editingEpisode.functionalImpact} onChange={(event) => setEditingEpisode((current) => ({ ...current, functionalImpact: event.target.value }))} placeholder="没有记录" /></label><label>现实限制<input value={editingEpisode.currentConstraint} onChange={(event) => setEditingEpisode((current) => ({ ...current, currentConstraint: event.target.value }))} placeholder="没有记录" /></label><label>什么时候开始<input value={editingEpisode.onset} onChange={(event) => setEditingEpisode((current) => ({ ...current, onset: event.target.value }))} placeholder="没有记录" /></label><label>和以往有什么不同<input value={editingEpisode.differenceFromUsual} onChange={(event) => setEditingEpisode((current) => ({ ...current, differenceFromUsual: event.target.value }))} placeholder="不知道也可以留空" /></label></div><label>做了什么<input value={editingEpisode.actionTitle} onChange={(event) => setEditingEpisode((current) => ({ ...current, actionTitle: event.target.value }))} /></label><fieldset><legend>真实结果</legend><div className="edit-effect-options"><button type="button" className={editingEpisode.effect === "helped" ? "active" : ""} onClick={() => setEditingEpisode((current) => ({ ...current, effect: "helped" }))}>很有帮助</button><button type="button" className={editingEpisode.effect === "some" ? "active" : ""} onClick={() => setEditingEpisode((current) => ({ ...current, effect: "some" }))}>有一点帮助</button><button type="button" className={editingEpisode.effect === "none" ? "active" : ""} onClick={() => setEditingEpisode((current) => ({ ...current, effect: "none" }))}>没有帮助 / 更不舒服</button></div></fieldset>{alreadyShared(editingEpisode) && <p className="shared-snapshot-note"><Lock /> 已经送出的礼物卡是当时单独确认的匿名快照，不会跟着这次修改自动变化。</p>}<button className="primary-button" type="submit" disabled={!editingEpisode.rawText.trim()}>保存妳的纠正</button><button className="secondary-button" type="button" onClick={() => setEditingEpisode(null)}>取消</button></form>}
     {shareDraft && <section className="share-record-card"><div className="share-record-heading"><EnvelopeOpen /><div><small>{shareDraft.effect === "helped" ? "很有帮助礼物卡" : shareDraft.effect === "some" ? "有一点帮助礼物卡" : "避雷卡"}</small><h3>让宝宝把这次经验包成礼物</h3></div><button aria-label="关闭分享确认" onClick={() => setShareDraft(null)}><X /></button></div><div className="share-preview"><span>当时</span><strong>{shareDraft.tags.join(" · ")}</strong><span>做了</span><strong>{shareDraft.actionTitle}</strong><span>反馈</span><strong>{effectLabel(shareDraft.effect)}</strong></div><div className="boundary-note"><Lock /> 只包含上面三项，不包含妳的原话、姓名、日期或完整周期档案。本次授权只适用于这一张卡。</div><button className="primary-button" onClick={confirmShare}><PaperPlaneTilt /> 确认派宝宝送出</button><button className="secondary-button" onClick={() => setShareDraft(null)}>先留在我的记录里</button></section>}
     <section className="factor-card care-records-card"><div className="care-records-title"><div><h3>在自己的经验里学习</h3><p>按结果回看当时发生了什么、妳做了什么，以及身体怎样回应。</p></div><span>{visibleEpisodes.length} 条</span></div><div className="effect-filters"><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>全部 {store.episodes.length}</button><button className={filter === "helped" ? "active" : ""} onClick={() => setFilter("helped")}>很有帮助 {effectCounts.helped}</button><button className={filter === "some" ? "active" : ""} onClick={() => setFilter("some")}>有一点 {effectCounts.some}</button><button className={filter === "none" ? "active" : ""} onClick={() => setFilter("none")}>没有帮助 {effectCounts.none}</button></div>{visibleEpisodes.length ? visibleEpisodes.map((episode) => <article className="episode-row episode-story" key={episode.id}><span className={`effect-dot ${episode.effect}`} /><div><strong>{effectLabel(episode.effect)}</strong><dl><dt>当时</dt><dd>{episode.rawText || episode.tags.join(" · ") || "没有记录"}</dd>{episode.symptoms && <><dt>身体</dt><dd>{episode.symptoms}</dd></>}<dt>做了</dt><dd>{episode.actionTitle}</dd><dt>反馈</dt><dd>{effectLabel(episode.effect)}</dd></dl><em>{new Date(episode.createdAt).toLocaleString("zh-CN")}</em></div><div className="episode-actions"><button aria-label="修改这一条照护记录" onClick={() => beginEpisodeEdit(episode)}><PencilSimple /></button><button className={alreadyShared(episode) ? "shared" : ""} disabled={alreadyShared(episode)} aria-label={alreadyShared(episode) ? "这条记录已经做成礼物卡" : "把这条记录做成礼物卡"} onClick={() => setShareDraft(episode)}>{alreadyShared(episode) ? <Check /> : <Gift />}</button><button aria-label="删除这一条照护记录" onClick={() => deleteEpisode(episode)}><Trash /></button></div></article>) : <p>{store.episodes.length ? "这个分类里还没有记录。" : "还没有真实反馈。去小窝和宝宝说说此刻发生了什么，它会陪妳完成第一次照护闭环。"}</p>}</section>
+    {clinicianOpen && createPortal(<ClinicianKit summary={clinicianSummary} onClose={() => setClinicianOpen(false)} onEditMoment={editClinicianSource} />, document.querySelector(".mobile-prototype"))}
   </div>;
+}
+
+function ClinicianKit({ summary, onClose, onEditMoment }) {
+  const effectLabel = (effect) => effect === "helped" ? "很有帮助" : effect === "some" ? "有一点帮助" : effect === "none" ? "没有帮助 / 更不舒服" : "未记录";
+  const copySummary = async () => {
+    const lines = [
+      "月经宝宝｜就医沟通锦囊",
+      `主要困扰：${summary.concern.join("；") || "未记录"}`,
+      `本次月经：${summary.period.start || "开始日期未记录"}${summary.period.ongoing ? "，目前仍在继续" : summary.period.end ? ` 至 ${summary.period.end}` : ""}`,
+      `身体感受：${summary.symptoms.join("；") || "未记录"}`,
+      `功能影响：${summary.functionalImpact.join("；") || "未记录"}`,
+      `尝试与结果：${summary.actions.map((item) => `${item.action}（${effectLabel(item.effect)}）`).join("；") || "未记录"}`,
+      `想和医生讨论：${summary.questions.join("；")}`,
+      summary.boundary,
+    ];
+    try { await navigator.clipboard.writeText(lines.join("\n")); } catch { window.print(); }
+  };
+  const rhythmText = (entry) => [["睡眠", entry.sleep], ["疼痛", entry.pain], ["心情", entry.mood], ["精力", entry.energy]].filter(([, value]) => value).map(([label, value]) => `${label}：${value}`).join(" · ");
+  return <div className="modal-layer clinician-kit-layer"><div className="sheet-header"><button className="icon-button" aria-label="关闭就医锦囊" onClick={onClose}><X /></button><div><p className="eyebrow">带着长期记录去沟通</p><h2>我的就医锦囊</h2></div><ShieldCheck /></div><div className="clinician-kit-content"><section className="clinician-kit-intro"><p>这里整理的是妳亲自确认过的记录。妳可以复制或打印，也可以随时回去修改原记录。</p><span>{summary.coverage.recordCount} 条记录 · {summary.coverage.dates.length} 个日期</span></section><ClinicianSection title="我最想说明的困扰" items={summary.concern} empty="还没有记录主诉原话" /><section className="clinician-section"><h3>本次月经日期</h3>{summary.period.start ? <div className="clinician-action-list"><article><span><strong>{summary.period.start}{summary.period.ongoing ? " 至今仍在继续" : summary.period.end ? ` 至 ${summary.period.end}` : "（结束日期未记录）"}</strong><small>来自妳确认的日期</small></span><button onClick={() => onEditMoment("period:confirmed-cycle-range", summary.period.start)}>修改原记录</button></article></div> : <p className="clinician-empty">开始与结束日期尚未记录</p>}</section><ClinicianSection title="身体感受与位置" items={[...summary.symptoms, ...summary.bodyLocations]} empty="尚未记录" /><ClinicianSection title="对生活的影响" items={summary.functionalImpact} empty="尚未记录" /><ClinicianSection title="什么时候开始、和平时有什么不同" items={[...summary.onset, ...summary.differenceFromUsual]} empty="尚未记录" /><section className="clinician-section"><h3>尝试过什么，结果怎样</h3>{summary.actions.length ? <div className="clinician-action-list">{summary.actions.map((item) => <article key={item.sourceMomentId}><span><strong>{item.action}</strong><small>{item.date} · {effectLabel(item.effect)}</small></span><button onClick={() => onEditMoment(item.sourceMomentId, item.date)}>修改原记录</button></article>)}</div> : <p className="clinician-empty">尚未记录</p>}</section><section className="clinician-section"><h3>睡眠、疼痛、心情与精力</h3>{summary.rhythm.entries.length ? <div className="clinician-action-list">{summary.rhythm.entries.map((item) => <article key={item.sourceMomentId}><span><strong>{rhythmText(item) || "只留下了一条补充"}</strong><small>{item.date}{item.note ? ` · ${item.note}` : ""}</small></span><button onClick={() => onEditMoment(item.sourceMomentId, item.date)}>修改原记录</button></article>)}</div> : <p className="clinician-empty">尚未记录</p>}</section><ClinicianSection title="想和医生讨论的问题" items={summary.questions} empty="尚未整理" /><div className="clinician-boundary"><WarningCircle /> {summary.boundary}</div><div className="clinician-kit-actions"><button className="primary-button" onClick={copySummary}><DownloadSimple /> 复制这份锦囊</button><button className="secondary-button" onClick={() => window.print()}>打印 / 存为 PDF</button><button className="secondary-button" onClick={onClose}>返回照护记录</button></div></div></div>;
+}
+
+function ClinicianSection({ title, items, empty }) {
+  return <section className="clinician-section"><h3>{title}</h3>{items.length ? <ul>{items.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : <p className="clinician-empty">{empty}</p>}</section>;
 }
 
 function BottomNav({ screen, setScreen }) {
