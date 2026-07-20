@@ -312,6 +312,7 @@ const OUT_OF_CHARACTER_PATTERNS = [
   /(?:AI|GPT|Agent|语言模型|系统提示|提示词|供应商|内部流程|Life\s*Coach|教练|疗愈师|心理咨询师|客服)/i,
   /(?:我理解妳|我听见了|妳现在最重要的是|我们先|现在想让我怎么做|想让我怎么做)/,
   /这股[^。！？!?]{0,30}(?:挤着|缠着|压着)妳/,
+  /(?:烦|累|疲惫|难受|不舒服)[^。！？!?]{0,18}(?:像|仿佛)[^。！？!?]{0,30}(?:漫|涌|挤|缠|压)/,
 ];
 
 function validatePersonaReply(reply, errors, { message = "", firstTurn = false } = {}) {

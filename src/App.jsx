@@ -736,8 +736,10 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
   const { voiceStatus, isListening, toggleVoice } = useVoiceDraft(chatDraft, setChatDraft);
   const analysis = useMemo(() => workingText ? analyzeInput(workingText) : null, [workingText]);
   const isRequesting = ["thinking", "retrieving"].includes(interactionState);
+  const isCheckingInitialTurn = Boolean(initialText && !initialSentRef.current && connectionState === "checking" && store.privacy.agentCloudConsent);
+  const showPendingReply = isRequesting || isCheckingInitialTurn;
   const latestConfirmedBodyState = store.episodes?.[0]?.bodyState || "calm";
-  const companionInteraction = isListening || (chatDraft.trim() && interactionState === "idle") ? "listening" : interactionState;
+  const companionInteraction = isCheckingInitialTurn ? "thinking" : isListening || (chatDraft.trim() && interactionState === "idle") ? "listening" : interactionState;
   const emergencySafety = ["bleeding", "crisis"].includes(analysis?.redFlag?.code);
 
   const scheduleInteraction = (next, delay = 900) => {
@@ -798,7 +800,7 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
       thread.scrollTo({ top: thread.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [messages.length, isRequesting, requestError?.code, step, viewportHeight]);
+  }, [messages.length, showPendingReply, requestError?.code, step, viewportHeight]);
 
   const continueConversation = async (nextText, { initial = false, retryTurn = null } = {}) => {
     const clean = nextText.trim();
@@ -1010,7 +1012,7 @@ function AgentPanel({ text, zones, recordSnapshot, knowledgeClaims: _knowledgeCl
       <div ref={chatThreadRef} className="chat-thread" aria-live="polite">
         {!messages.length && <div className="agent-empty-state"><p className="eyebrow">从此刻开始</p><h3>不用先把话整理好</h3><p>身体哪里不舒服、什么时候开始、今天还有什么必须完成的事，想到哪一句就说哪一句。</p><small><Lock /> 只有妳确认过的记录，才会进入长期记忆。</small></div>}
         {messages.map((message) => message.role === "user" ? <div className={`message user-message ${message.deliveryState === "failed" ? "failed" : ""}`} key={message.id}><span>{message.content}</span>{message.deliveryState === "failed" && <small>没有收到回复</small>}</div> : <div className="message baby-message" key={message.id}><span className="assistant-pearl" /><div><p>{message.content}</p><AgentKnowledgeCard card={message.knowledgeCard} /></div></div>)}
-        {isRequesting && <div className="message baby-message agent-pending-message" role="status" aria-label="月经宝宝正在回应"><div className="pearl-thinking-dots" aria-hidden="true"><i /><i /><i /></div></div>}
+        {showPendingReply && <div className="message baby-message agent-pending-message" role="status" aria-label="月经宝宝正在回应"><div className="pearl-thinking-dots" aria-hidden="true"><i /><i /><i /></div></div>}
         {requestError && <div className="agent-system-error" role="alert"><WarningCircle /><div><p className="eyebrow">系统状态 · 不是宝宝回复</p><h3>本轮没有生成回复</h3><p>{getAgentErrorCopy(requestError.code)}</p><div>{requestError.code === "agent_not_authorized" && <button className="primary-button" onClick={grantAgentConsent}>允许联网；消息仍由妳决定何时发送</button>}{requestError.turn && <button className="secondary-button" disabled={isRetrying || isRequesting || connectionState === "checking"} onClick={retryFailedTurn}>{isRetrying ? "正在重新连接" : "重新发送这一条"}</button>}{!requestError.turn && requestError.code !== "agent_not_authorized" && <button className="secondary-button" disabled={connectionState === "checking"} onClick={refreshAgentStatus}>{connectionState === "checking" ? "正在重新连接" : "重新检查连接"}</button>}</div></div></div>}
         {analysis && step === "safety" && <div className="safety-card" role="alert"><WarningCircle weight="fill" /><div><p className="eyebrow">产品安全提示 · 不是 Agent 回复</p><h3>{analysis.redFlag.title}</h3><p>{analysis.redFlag.action}</p><div className="boundary-note">普通对话无法判断原因，也不能替代及时的专业评估。</div><div className="safety-actions">{emergencySafety && <a className="primary-button" href="tel:120">联系紧急帮助（中国大陆 120）</a>}<button className={emergencySafety ? "secondary-button" : "primary-button"} onClick={onClose}>{emergencySafety ? "我已看见" : "我会尽快联系医疗专业人员"}</button></div></div></div>}
         {step === "care" && currentAction && <div className="gift-action-card"><div className="gift-ribbon"><Gift weight="fill" /> 一个可以选择、也可以停下的办法</div><h3>{currentAction.title}</h3><p>{currentAction.why}</p><div className="action-how"><Clock /> {currentAction.how}</div><div className="boundary-note"><ShieldCheck /> {currentAction.stopWhen}</div><SourceRows sources={currentAction.sources} label="这个办法的专业来源" /><small>妳可以不采用；只有妳亲自反馈的结果，才会成为以后行动排序的依据。</small><button className="primary-button" onClick={() => setStep("feedback")}>我试过了，告诉宝宝真实结果</button></div>}

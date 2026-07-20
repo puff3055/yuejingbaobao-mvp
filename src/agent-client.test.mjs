@@ -76,8 +76,14 @@ test("invalid JSON is rejected and never converted into a baby reply", async () 
 });
 
 test("an invalid schema is rejected whole instead of displaying partial text", async () => {
-  await withMockFetch(async () => new Response(JSON.stringify({ ...validPayload, reply: "", extra: "unsafe" }), { status: 200 }), async () => {
+  await withMockFetch(async () => new Response(JSON.stringify({ ...validPayload, turnKind: "unsafe", extra: "unsafe" }), { status: 200 }), async () => {
     await assert.rejects(request(), (error) => error.code === "agent_invalid_schema");
+  });
+});
+
+test("an empty reply keeps its dedicated error instead of being folded into schema failure", async () => {
+  await withMockFetch(async () => new Response(JSON.stringify({ ...validPayload, reply: "   " }), { status: 200, headers: { "Content-Type": "application/json" } }), async () => {
+    await assert.rejects(request(), (error) => error.code === "agent_empty_reply");
   });
 });
 

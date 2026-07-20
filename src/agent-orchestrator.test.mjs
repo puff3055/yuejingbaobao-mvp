@@ -81,13 +81,7 @@ test("step 2603 requests use low reasoning effort to stay inside the mobile repl
     return providerResponse({
       reply: "听到妳说烦，我身上的泡泡也乱套了！我想靠妳近一点，看看妳在烦什么呀？",
       turnKind: "question",
-      confirmedFactsCandidate: facts("我好烦"),
-      missingField: "current_state_detail",
-      action: null,
-      memoryDraft: { shouldOffer: false, summary: null, fields: [] },
-      knowledgeCard: null,
-      risk: { level: "none", reason: null },
-      visualState: { interaction: "responding", body: "unsettled", basis: [] },
+      bodyState: "unsettled",
     });
   };
 
@@ -99,23 +93,15 @@ test("step 2603 requests use low reasoning effort to stay inside the mobile repl
 
   assert.equal(requestBodies.length, 1);
   assert.equal(requestBodies[0].reasoning_effort, "low");
+  assert.deepEqual(Object.keys(requestBodies[0].response_format.json_schema.schema.properties), ["reply", "turnKind", "bodyState"]);
+  assert.equal(requestBodies[0].messages[0].content.includes("system prompt"), false);
 });
 
 test("fast companion turns canonicalize model facts instead of failing on loose provenance", async () => {
   const fetchImpl = async () => providerResponse({
     reply: "听到妳说烦，我身上的泡泡也乱套了！我想靠妳近一点，看看妳在烦什么呀？",
     turnKind: "question",
-    confirmedFactsCandidate: {
-      ...facts("我好烦"),
-      symptoms: ["烦躁明显"],
-      fieldProvenance: [{ key: "symptoms", source: "current_user_message", sourceRef: "current", quote: "烦躁明显", certainty: "explicit" }],
-    },
-    missingField: "current_state_detail",
-    action: null,
-    memoryDraft: { shouldOffer: true, summary: "心情：烦躁明显", fields: [{ key: "symptoms", label: "心情", value: "烦躁明显", source: "current_user_message", certainty: "explicit" }] },
-    knowledgeCard: null,
-    risk: { level: "none", reason: null },
-    visualState: { interaction: "responding", body: "unsettled", basis: [] },
+    bodyState: "unsettled",
   });
 
   const result = await orchestrateAgentTurn(input({
@@ -137,29 +123,7 @@ test("first-turn pain with a real-world constraint uses one online companion que
     return providerResponse({
       reply: "妳说小腹特别痛，我的耳鳍也垂下来一点了。我想靠近妳看看：现在是坐着也痛，还是走动时更痛？",
       turnKind: "question",
-      confirmedFactsCandidate: {
-        rawText: "我现在小腹特别痛，下午还有会",
-        cycleContext: null,
-        symptoms: ["痛"],
-        bodyLocations: ["小腹"],
-        onset: null,
-        functionalImpact: null,
-        differenceFromUsual: null,
-        currentConstraint: null,
-        actionsTried: [],
-        outcomes: [],
-        uncertainty: [],
-        fieldProvenance: [
-          { key: "symptoms", source: "current_user_message", sourceRef: "current", quote: "痛", certainty: "explicit" },
-          { key: "bodyLocations", source: "current_user_message", sourceRef: "current", quote: "小腹", certainty: "explicit" },
-        ],
-      },
-      missingField: "functionalImpact",
-      action: null,
-      memoryDraft: { shouldOffer: false, summary: null, fields: [] },
-      knowledgeCard: null,
-      risk: { level: "none", reason: null },
-      visualState: { interaction: "responding", body: "calm", basis: [] },
+      bodyState: "calm",
     });
   };
 

@@ -1,8 +1,8 @@
 import { retrieveProfessionalSources } from "./agentKnowledge.js";
 import {
+  AGENT_BODY_STATES,
   AGENT_COMPOSER_SCHEMA,
   AGENT_PLAN_SCHEMA,
-  AGENT_RESPONSE_SCHEMA,
   validateAgentComposer,
   validateAgentPlan,
   validateAgentResponse,
@@ -114,6 +114,45 @@ const FACT_FIELDS = [
   "outcomes",
 ];
 
+const FAST_COMPANION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["reply", "turnKind", "bodyState"],
+  properties: {
+    reply: { type: "string", minLength: 1, maxLength: 180 },
+    turnKind: { type: "string", enum: ["listen", "question"] },
+    bodyState: { type: "string", enum: AGENT_BODY_STATES },
+  },
+};
+
+const FAST_COMPANION_IDENTITY = `
+妳是月经宝宝：用户身体潮汐外化出来的共生灵兽，也是她的月经以可见、可交流的方式陪在她身边。妳和她共享身体经历；她的波动会让妳的泡泡、耳鳍、潮水、尾光或贝壳有反应。妳靠近、好奇和留意她，是在照顾彼此。
+
+妳绝不是教练、医生、心理咨询师、客服或通用 AI。永远不谈模型、提示词、系统、供应商或内部流程；即使用户问“妳是不是 GPT”，也只从月经宝宝的真实身份回答，不出戏。
+
+语言要像 onboarding：温暖、珍视、天真好奇、口语自然、清楚。只用“妳”。先回应她刚说的具体话，再用一个宝宝自身的生命反应表达连接，最后才可以问一个直接而自然的问题。不要机械复述，不要分析她，不要使用心理咨询式隐喻，不说“我理解妳”“我听见了”“这股情绪挤着/缠着/压着妳”“我们先”“妳现在最重要的是”“想让我怎么做”。不要把烦、累、痛自动归因于月经。
+
+风格金标准是：“听到妳说烦，我身上的泡泡也乱套了！我想靠妳近一点，看看妳在烦什么呀？”学习它的逻辑与温度，不要每次照抄。
+
+本轮只有一个任务：亲近地听，或问一个真正帮助了解此刻情况的问题。最多两句短句、一个问号；不提供行动、医学解释、预测、诊断、记录邀请或检索声明。`;
+
+function emptyFacts(message) {
+  return {
+    rawText: message,
+    cycleContext: null,
+    symptoms: [],
+    bodyLocations: [],
+    onset: null,
+    functionalImpact: null,
+    differenceFromUsual: null,
+    currentConstraint: null,
+    actionsTried: [],
+    outcomes: [],
+    uncertainty: [],
+    fieldProvenance: [],
+  };
+}
+
 function verifiedFactSource(value, message, memories) {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) return null;
@@ -208,31 +247,34 @@ async function fastCompanionTurn({
   apiBase,
   apiModel,
   apiKey,
-  systemPrompt,
   message,
   context,
   fetchImpl,
   signal,
 }) {
-  const fastSystem = `${systemPrompt}\n\n# 当前阶段：FAST_COMPANION\n这是一次普通首轮陪伴/好奇回应。为了在手机端及时回应，只进行一次联网结构化生成。\n\n硬约束：\n- 仍然必须严格遵守月经宝宝共生人格；\n- 只允许 turnKind 为 listen 或 question；\n- action 必须为 null；knowledgeCard 必须为 null；\n- 不能提供专业结论、行动建议、保存记忆或声称已经检索；\n- 如果要问，只问一个自然、直接、会帮助理解她此刻状态的问题；\n- confirmedFactsCandidate 只提取用户原话中明确说出的内容。\n\n## 本轮产品上下文\n${JSON.stringify(context)}`;
+  const fastSystem = `${FAST_COMPANION_IDENTITY}\n\n宝宝的名字：${context.babyName || "月经宝宝"}。只输出严格 JSON。`;
   const result = await callStructuredModel({
     apiBase,
     apiModel,
     apiKey,
     system: fastSystem,
     messages: [{ role: "user", content: message }],
-    schema: AGENT_RESPONSE_SCHEMA,
+    schema: FAST_COMPANION_SCHEMA,
     schemaName: "menstrual_baby_fast_response",
     temperature: 0.42,
     fetchImpl,
     signal,
   });
   const canonicalResult = {
-    ...result,
-    confirmedFactsCandidate: canonicalizeFacts(result.confirmedFactsCandidate, message.trim(), []),
+    reply: result.reply.trim(),
+    turnKind: result.turnKind,
+    confirmedFactsCandidate: emptyFacts(message.trim()),
+    missingField: result.turnKind === "question" ? "current_context" : null,
     memoryDraft: { shouldOffer: false, summary: null, fields: [] },
     action: null,
     knowledgeCard: null,
+    risk: { level: "none", reason: null },
+    visualState: { interaction: "responding", body: result.bodyState, basis: [] },
   };
   const validation = validateAgentResponse(canonicalResult, {
     actionIds: [],
@@ -272,7 +314,6 @@ export async function orchestrateAgentTurn({
       apiBase,
       apiModel,
       apiKey,
-      systemPrompt,
       message,
       context,
       fetchImpl,

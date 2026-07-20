@@ -98,6 +98,9 @@ export async function requestAgentReply({
     });
     const payload = await readPayload(response);
     if (!response.ok) throw new AgentRequestError(typeof payload?.error === "string" ? payload.error : "agent_provider_error");
+    if (typeof payload?.reply !== "string" || !payload.reply.trim()) {
+      throw new AgentRequestError("agent_empty_reply");
+    }
 
     const sourceUrls = [
       ...(payload?.knowledgeCard?.sources || []),
