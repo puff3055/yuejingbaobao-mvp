@@ -214,7 +214,10 @@ test("an ordinary second turn uses one compact online call and can choose a whit
 
   assert.equal(requestBodies.length, 1);
   assert.equal(requestBodies[0].response_format.json_schema.name, "menstrual_baby_core_response");
-  assert.equal(requestBodies[0].max_tokens, 820);
+  assert.equal(requestBodies[0].temperature, 0);
+  assert.equal(requestBodies[0].max_tokens, 1600);
+  assert.match(requestBodies[0].messages[0].content, /每一轮都必须仍像同一只月经宝宝在说话/);
+  assert.match(requestBodies[0].messages[0].content, /绝对不要出现这些字面表达/);
   assert.equal(result.action.id, "meeting");
   assert.deepEqual(result.confirmedFactsCandidate.bodyLocations, []);
   assert.equal(result.confirmedFactsCandidate.functionalImpact, "已经痛得坐不住，也很难专注");
