@@ -136,6 +136,17 @@ const FAST_COMPANION_IDENTITY = `
 
 本轮只有一个任务：亲近地听，或问一个真正帮助了解此刻情况的问题。最多两句短句、一个问号；不提供行动、医学解释、预测、诊断、记录邀请或检索声明。`;
 
+function fastTurnFocus(message) {
+  if (/(?:痛|疼)/.test(message)) {
+    return `用户明确说到疼痛。本轮必须问一个“疼痛已经怎样影响她当下活动”的问题，例如能否坐着、走动、专注、工作、上课或睡觉；只选最贴近她原话的一种问法。不要问“要不要我做什么”，不要假装能替她按压、揉、抱、止痛或直接触碰身体。
+
+示例：
+用户：“我现在小腹特别痛，下午还有会”
+合适：“妳的小腹痛得厉害，我的耳鳍都跟着垂下来一点了。现在这股痛已经让妳坐不住、走动困难，还是主要影响专注？”`;
+  }
+  return "本轮的问题要直接了解她正在经历的具体事情，不询问她要你做什么。";
+}
+
 function emptyFacts(message) {
   return {
     rawText: message,
@@ -252,7 +263,7 @@ async function fastCompanionTurn({
   fetchImpl,
   signal,
 }) {
-  const fastSystem = `${FAST_COMPANION_IDENTITY}\n\n宝宝的名字：${context.babyName || "月经宝宝"}。只输出严格 JSON。`;
+  const fastSystem = `${FAST_COMPANION_IDENTITY}\n\n${fastTurnFocus(message)}\n\n宝宝的名字：${context.babyName || "月经宝宝"}。只输出严格 JSON。`;
   const result = await callStructuredModel({
     apiBase,
     apiModel,
@@ -261,15 +272,22 @@ async function fastCompanionTurn({
     messages: [{ role: "user", content: message }],
     schema: FAST_COMPANION_SCHEMA,
     schemaName: "menstrual_baby_fast_response",
-    temperature: 0.42,
+    temperature: 0.2,
     fetchImpl,
     signal,
   });
+  // The provider can occasionally label a one-question reply as `listen`
+  // even though the strict payload is otherwise valid. The reply itself is
+  // authoritative for this display-only control field; classifying it here
+  // preserves the full validated response without inventing any user-facing
+  // content or silently retrying the model.
+  const questionCount = (result.reply.match(/[？?]/g) || []).length;
+  const turnKind = questionCount === 1 ? "question" : result.turnKind;
   const canonicalResult = {
     reply: result.reply.trim(),
-    turnKind: result.turnKind,
+    turnKind,
     confirmedFactsCandidate: emptyFacts(message.trim()),
-    missingField: result.turnKind === "question" ? "current_context" : null,
+    missingField: turnKind === "question" ? "current_context" : null,
     memoryDraft: { shouldOffer: false, summary: null, fields: [] },
     action: null,
     knowledgeCard: null,

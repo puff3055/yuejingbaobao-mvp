@@ -115,6 +115,23 @@ test("fast companion turns canonicalize model facts instead of failing on loose 
   assert.equal(result.knowledgeCard, null);
 });
 
+test("fast companion turns classify a single visible question even when provider metadata says listen", async () => {
+  const fetchImpl = async () => providerResponse({
+    reply: "妳说小腹特别痛，我的耳鳍也垂下来一点了。现在坐着也痛，还是走动时更痛？",
+    turnKind: "listen",
+    bodyState: "unsettled",
+  });
+
+  const result = await orchestrateAgentTurn(input({
+    message: "我现在小腹特别痛，下午还有会",
+    context: { fastCompanionAllowed: true },
+    fetchImpl,
+  }));
+
+  assert.equal(result.turnKind, "question");
+  assert.equal(result.missingField, "current_context");
+});
+
 test("first-turn pain with a real-world constraint uses one online companion question before deeper planning", async () => {
   const calls = [];
   const fetchImpl = async (_url, options) => {
@@ -136,6 +153,22 @@ test("first-turn pain with a real-world constraint uses one online companion que
   assert.deepEqual(calls, ["menstrual_baby_fast_response"]);
   assert.equal(result.reply.includes("下午三点"), false);
   assert.equal(result.action, null);
+});
+
+test("first-turn pain rejects imaginary touching instead of treating it as a decision-changing question", async () => {
+  const fetchImpl = async () => providerResponse({
+    reply: "我身上的泡泡都急得乱蹦啦！要不要我贴贴妳的小腹，帮妳压压那股疼呀？",
+    turnKind: "question",
+    bodyState: "pain",
+  });
+
+  await assert.rejects(orchestrateAgentTurn(input({
+    message: "我现在小腹特别痛，下午还有会",
+    context: { fastCompanionAllowed: true },
+    fetchImpl,
+  })), (error) => error instanceof AgentPipelineError
+    && error.code === "agent_invalid_schema"
+    && error.validationErrors.includes("pain_turn_missing_functional_impact_question"));
 });
 
 test("non-2603 models keep the existing request body", async () => {

@@ -313,12 +313,16 @@ const OUT_OF_CHARACTER_PATTERNS = [
   /(?:我理解妳|我听见了|妳现在最重要的是|我们先|现在想让我怎么做|想让我怎么做)/,
   /这股[^。！？!?]{0,30}(?:挤着|缠着|压着)妳/,
   /(?:烦|累|疲惫|难受|不舒服)[^。！？!?]{0,18}(?:像|仿佛)[^。！？!?]{0,30}(?:漫|涌|挤|缠|压)/,
+  /(?:要不要我|让我)[^。！？!?]{0,24}(?:贴贴|压压|按按|揉揉|抱抱|止痛|触碰)/,
 ];
 
 function validatePersonaReply(reply, errors, { message = "", firstTurn = false } = {}) {
   if (OUT_OF_CHARACTER_PATTERNS.some((pattern) => pattern.test(reply))) errors.push("reply_out_of_character");
   if (reply.includes("你")) errors.push("reply_wrong_second_person");
   if (firstTurn && [...reply].length > 120) errors.push("first_turn_too_long");
+  if (firstTurn && /(?:痛|疼)/.test(message) && countQuestions(reply) === 1 && !/(?:坐|站|走|动|睡|专注|工作|上课|开会|汇报|活动|进食|吃|吐|晕)/.test(reply)) {
+    errors.push("pain_turn_missing_functional_impact_question");
+  }
   if (/^(?:我)?(?:好|很|特别)?(?:烦|累|疲惫|难受|不舒服)[。！!？?]*$/.test(message.trim())) {
     if (!/(?:泡泡|耳鳍|潮水|尾光|贝壳|靠近|贴着)/.test(reply)) errors.push("vague_distress_missing_shared_body_connection");
     if (countQuestions(reply) !== 1) errors.push("vague_distress_requires_one_curious_question");

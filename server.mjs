@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { readFile, stat } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { setDefaultResultOrder } from "node:dns";
@@ -23,6 +24,45 @@ let knowledgeCache = null;
 // answer first. Prefer IPv4 so an otherwise healthy Agent request is not
 // reported as unavailable merely because that route cannot leave the cluster.
 setDefaultResultOrder("ipv4first");
+
+function fetchWithIpv4(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const signal = options.signal;
+    if (signal?.aborted) {
+      const aborted = new Error("The operation was aborted");
+      aborted.name = "AbortError";
+      reject(aborted);
+      return;
+    }
+
+    const request = httpsRequest(url, {
+      method: options.method || "GET",
+      headers: options.headers,
+      family: 4,
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        resolve(new Response(Buffer.concat(chunks), {
+          status: response.statusCode || 500,
+          statusText: response.statusMessage || "",
+          headers: response.headers,
+        }));
+      });
+    });
+
+    const abort = () => {
+      const aborted = new Error("The operation was aborted");
+      aborted.name = "AbortError";
+      request.destroy(aborted);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    request.once("close", () => signal?.removeEventListener("abort", abort));
+    request.once("error", reject);
+    if (options.body != null) request.write(options.body);
+    request.end();
+  });
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -161,7 +201,7 @@ async function agentReply(req, res) {
       actionCandidates,
       blockedActionIds,
       knowledgeRecords: await loadKnowledgeClaims(),
-      fetchImpl: fetch,
+      fetchImpl: fetchWithIpv4,
       signal: controller.signal,
     });
     return json(res, 200, { ...result, model: apiModel });
