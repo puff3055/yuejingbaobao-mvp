@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { sites } from "./build/sites-vite-plugin.mjs";
 
 export default defineConfig({
   optimizeDeps: {
@@ -12,10 +13,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  preview: {
-    host: "0.0.0.0",
-    port: 4173,
-    allowedHosts: true,
-  },
-  plugins: [react()],
+  plugins: [react(), sites()],
 });

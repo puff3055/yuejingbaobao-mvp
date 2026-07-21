@@ -1,0 +1,638 @@
+.pc-workspace {
+  min-height: 100vh;
+  background: linear-gradient(#f8f3f1, #f0e9f2);
+  padding-bottom: 30px;
+}
+
+.pc-header {
+  padding: 24px 24px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e0d3dc;
+}
+
+.pc-header .demo-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #a291a1;
+  background: #f3edf2;
+  padding: 3px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.pc-header h1 {
+  font: 600 22px 'Noto Serif SC';
+  color: #563b5c;
+  margin: 0 0 6px;
+}
+
+.pc-header p {
+  font-size: 13px;
+  color: #8d6f8d;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.pc-section {
+  margin: 16px 16px 24px;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid #e0d3dc;
+  overflow: hidden;
+}
+
+.pc-section-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0e7ee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pc-section-header h2 {
+  font: 600 16px 'Noto Serif SC';
+  color: #563b5c;
+  margin: 0;
+}
+
+.pc-section-header .edit-btn {
+  font-size: 12px;
+  color: #76506f;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.pc-section-header .edit-btn:hover {
+  text-decoration: underline;
+}
+
+.pc-section-content {
+  padding: 16px 20px;
+}
+
+.pc-field-row {
+  display: flex;
+  padding: 10px 0;
+  border-bottom: 1px solid #f7f2f5;
+}
+
+.pc-field-row:last-child {
+  border-bottom: none;
+}
+
+.pc-field-label {
+  width: 80px;
+  font-size: 12px;
+  color: #9a8698;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.pc-field-value {
+  flex: 1;
+  font-size: 14px;
+  color: #563b5c;
+  line-height: 1.5;
+}
+
+.pc-field-value .state-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #a291a1;
+  background: #f5f0f4;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 6px;
+}
+
+.pc-field-value .pain-bar {
+  display: inline-block;
+  height: 6px;
+  background: #e8dfe5;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.pc-field-value .pain-bar-inner {
+  height: 100%;
+  background: #87617e;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.pc-field-value .tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pc-field-value .tag {
+  font-size: 12px;
+  color: #654760;
+  background: #f0e7ee;
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+.pc-record-original {
+  background: #faf6f2;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.pc-record-original .label {
+  font-size: 10px;
+  color: #9a8698;
+  margin-bottom: 4px;
+}
+
+.pc-record-original .text {
+  font-size: 14px;
+  color: #563b5c;
+  line-height: 1.6;
+}
+
+.pc-actions-list {
+  margin-top: 12px;
+}
+
+.pc-action-item {
+  background: #faf6f2;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.pc-action-item:last-child {
+  margin-bottom: 0;
+}
+
+.pc-action-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.pc-action-label {
+  font: 500 14px 'Noto Serif SC';
+  color: #563b5c;
+  flex: 1;
+}
+
+.pc-action-outcome {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.pc-action-outcome.helped {
+  background: #e8f0e8;
+  color: #5a7a5a;
+}
+
+.pc-action-outcome.some {
+  background: #fff8e8;
+  color: #8a7a5a;
+}
+
+.pc-action-outcome.not_helped {
+  background: #f5ebeb;
+  color: #7a5a5a;
+}
+
+.pc-action-outcome.worse {
+  background: #fbe8e8;
+  color: #9a4a4a;
+}
+
+.pc-action-outcome.pending {
+  background: #f0eef2;
+  color: #7a6a8a;
+}
+
+.pc-action-details {
+  font-size: 12px;
+  color: #8d6f8d;
+  line-height: 1.6;
+}
+
+.pc-action-details .note {
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.pc-timeline {
+  position: relative;
+  padding-left: 24px;
+}
+
+.pc-timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #e8dfe5;
+  border-radius: 1px;
+}
+
+.pc-timeline-item {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.pc-timeline-item:last-child {
+  margin-bottom: 0;
+}
+
+.pc-timeline-dot {
+  position: absolute;
+  left: -20px;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #87617e;
+}
+
+.pc-timeline-item.similar .pc-timeline-dot {
+  background: #87617e;
+}
+
+.pc-timeline-item.missing .pc-timeline-dot {
+  border-color: #c9bfc8;
+  background: #fff;
+}
+
+.pc-timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.pc-timeline-cycle {
+  font: 500 14px 'Noto Serif SC';
+  color: #563b5c;
+}
+
+.pc-timeline-day {
+  font-size: 11px;
+  color: #9a8698;
+}
+
+.pc-timeline-content {
+  font-size: 12px;
+  color: #8d6f8d;
+  line-height: 1.5;
+}
+
+.pc-timeline-content .tag {
+  font-size: 10px;
+  color: #654760;
+  background: #f0e7ee;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-right: 4px;
+}
+
+.pc-clues-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #e8dfe5;
+}
+
+.pc-clues-section h3 {
+  font: 500 13px 'Noto Serif SC';
+  color: #654760;
+  margin: 0 0 10px;
+}
+
+.pc-clue-item {
+  font-size: 12px;
+  color: #8d6f8d;
+  line-height: 1.6;
+  padding: 8px 12px;
+  background: #faf6f2;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.pc-clue-item:last-child {
+  margin-bottom: 0;
+}
+
+.pc-medical-summary {
+  background: #fff;
+}
+
+.pc-medical-summary .pc-section-content {
+  padding: 0;
+}
+
+.pc-medical-card {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0e7ee;
+}
+
+.pc-medical-card:last-child {
+  border-bottom: none;
+}
+
+.pc-medical-card .label {
+  font-size: 11px;
+  color: #9a8698;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.pc-medical-card .value {
+  font-size: 14px;
+  color: #563b5c;
+  line-height: 1.5;
+}
+
+.pc-medical-card .value.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pc-medical-card .value.tag-list .tag {
+  font-size: 12px;
+  color: #654760;
+  background: #f0e7ee;
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+.pc-medical-disclaimer {
+  background: #faf6f2;
+  padding: 14px 20px;
+  margin-top: 0;
+}
+
+.pc-medical-disclaimer p {
+  font-size: 11px;
+  color: #9a8698;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.pc-edit-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  z-index: 1000;
+}
+
+.pc-edit-modal {
+  background: #fff;
+  width: 100%;
+  max-height: 85vh;
+  border-radius: 24px 24px 0 0;
+  padding: 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+
+.pc-edit-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.pc-edit-modal-header h3 {
+  font: 600 18px 'Noto Serif SC';
+  color: #563b5c;
+  margin: 0;
+}
+
+.pc-edit-modal-header .close-btn {
+  font-size: 24px;
+  color: #9a8698;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 8px;
+}
+
+.pc-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pc-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pc-edit-field label {
+  font: 500 13px 'Noto Serif SC';
+  color: #654760;
+}
+
+.pc-edit-field input,
+.pc-edit-field textarea,
+.pc-edit-field select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #e0d3dc;
+  border-radius: 12px;
+  font-size: 14px;
+  color: #563b5c;
+  background: #faf6f2;
+  font-family: 'Noto Sans SC', sans-serif;
+}
+
+.pc-edit-field input:focus,
+.pc-edit-field textarea:focus,
+.pc-edit-field select:focus {
+  outline: none;
+  border-color: #87617e;
+}
+
+.pc-edit-field textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.pc-edit-field .state-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pc-edit-field .state-option {
+  flex: 1;
+  min-width: calc(25% - 6px);
+  padding: 10px 8px;
+  border: 1px solid #e0d3dc;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #654760;
+  background: #faf6f2;
+  cursor: pointer;
+  text-align: center;
+}
+
+.pc-edit-field .state-option.selected {
+  background: #76506f;
+  color: #fff;
+  border-color: #76506f;
+}
+
+.pc-edit-field .multi-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pc-edit-field .multi-select-option {
+  padding: 8px 12px;
+  border: 1px solid #e0d3dc;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #654760;
+  background: #faf6f2;
+  cursor: pointer;
+}
+
+.pc-edit-field .multi-select-option.selected {
+  background: #76506f;
+  color: #fff;
+  border-color: #76506f;
+}
+
+.pc-edit-field .pain-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pc-edit-field .pain-slider input[type="range"] {
+  flex: 1;
+  height: 6px;
+  background: #e8dfe5;
+  border-radius: 3px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.pc-edit-field .pain-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #87617e;
+  cursor: pointer;
+}
+
+.pc-edit-field .pain-value {
+  font: 600 18px 'Noto Serif SC';
+  color: #76506f;
+  min-width: 40px;
+  text-align: center;
+}
+
+.pc-edit-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.pc-edit-actions button {
+  flex: 1;
+  height: 48px;
+  border-radius: 14px;
+  font: 600 15px 'Noto Serif SC';
+  cursor: pointer;
+  border: none;
+}
+
+.pc-edit-actions .cancel-btn {
+  background: #f0e7ee;
+  color: #76506f;
+}
+
+.pc-edit-actions .save-btn {
+  background: #76506f;
+  color: #fff;
+}
+
+.pc-empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #9a8698;
+}
+
+.pc-empty-state .icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.pc-empty-state p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pc-action-group-title {
+  font: 500 14px 'Noto Serif SC';
+  color: #654760;
+  margin: 16px 0 10px;
+  padding-left: 4px;
+}
+
+.pc-action-group-title:first-child {
+  margin-top: 0;
+}
+
+@media (min-width: 430px) {
+  .pc-workspace {
+    max-width: 430px;
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 390px) {
+  .pc-section {
+    margin: 12px 12px 20px;
+  }
+  
+  .pc-section-content {
+    padding: 12px 16px;
+  }
+  
+  .pc-header {
+    padding: 20px 16px 12px;
+  }
+  
+  .pc-field-label {
+    width: 70px;
+    font-size: 11px;
+  }
+  
+  .pc-field-value {
+    font-size: 13px;
+  }
+}
