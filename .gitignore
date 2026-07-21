@@ -1,13 +1,24 @@
-.env
-.env.*
-!.env.example
+# Dependencies and generated output
 node_modules/
 dist/
 .npm-cache/
-.DS_Store
 *.log
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+
+# Sensitive research material must never enter the repository
+docs/research/private/
+docs/research/raw-identifiable/
+research-participants/
+
+# Temporary files
 tmp/
-artifacts/
-.opendeploy/
-.codex/
-*.inspect.ndjson
+*.tmp
+*.swp
+
